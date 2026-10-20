@@ -334,6 +334,16 @@ export function compareIn(sh, targetId, root = sh.key) {
   }
   return { shared, only, extra };
 }
+// The scale a mode is measured against, on the mode's own root: the major
+// scale if its 3rd is major, the natural minor if it is ♭3 (Dorian against
+// natural minor leaves exactly its 6; against major it would also show the
+// ♭3 and ♭7 every minor mode has). Null when the mode IS that scale — Ionian,
+// Aeolian — since there is nothing to compare.
+export function parallelOf(scaleId, k) {
+  const m = mode(scaleId, k);
+  const target = m.labels[2] === '3' ? 'major' : 'natural';
+  return m.ivs.join() === SCALES[target].iv.join() ? null : target;
+}
 // In intervals from the root being compared: the scale's own (k = 0) or mode
 // k's, against the other scale built on that same root.
 export function compareDegrees(scaleId, targetId, k = 0) {

@@ -316,23 +316,40 @@ check('shared / only / extra, re-derived for every shape, key and target', () =>
     setEq(keysOf(c.extra), want, 'extra');
   }
 });
-check('a mode against the major scale on the mode’s own root', () => {
+// What each mode is compared with: the major scale if its 3rd is major, the
+// natural minor if it is ♭3; nothing when the mode IS that scale.
+const PARALLEL = {
+  natural:  [null, 'natural', null, 'natural', 'natural', 'major', 'major'],          // k=0 uses the neighbour list
+  major:    [null, 'natural', 'natural', 'major', 'major', null, 'natural'],
+  harmonic: [null, 'natural', 'major', 'natural', 'major', 'major', 'natural'],
+};
+check('a mode against the major or natural minor scale on the mode’s own root', () => {
   for (const set of SC) for (let k = 1; k < 7; k++) {
+    const want = PARALLEL[set][k], mf = MODE_FORMULA[set][k][0].split(' ');
+    eq(T.parallelOf(set, k), want, `${set} mode ${k + 1} (${mf.join(' ')}) is compared with`);
+    if (!want) { ok(mf.join(' ') === F.Ionian || mf.join(' ') === F.Aeolian, `${set} mode ${k + 1}: nothing to compare only when it IS major or natural minor`); continue; }
+    eq(mf[2] === '3' ? 'major' : 'natural', want, `${set} mode ${k + 1}: chosen by its 3rd`);
     const mr = IV[set][k];
     const mine = IV[set].map(i => mod(i - mr)).sort((a, b) => a - b);
-    const d = T.compareDegrees(set, 'major', k);
-    setEq(d.shared.map(String), mine.filter(i => IV.major.includes(i)).map(String), `${set} mode ${k + 1} shared`);
-    setEq(d.only.map(String), mine.filter(i => !IV.major.includes(i)).map(String), 'only');
-    setEq(d.extra.map(String), IV.major.filter(i => !mine.includes(i)).map(String), 'extra');
+    const d = T.compareDegrees(set, want, k);
+    setEq(d.shared.map(String), mine.filter(i => IV[want].includes(i)).map(String), `${set} mode ${k + 1} shared`);
+    setEq(d.only.map(String), mine.filter(i => !IV[want].includes(i)).map(String), 'only');
+    setEq(d.extra.map(String), IV[want].filter(i => !mine.includes(i)).map(String), 'extra');
     for (const key of KEYS) for (const id of IDS[set]) {
-      const root = mod(key + mr), sh = T.cagedShape(set, key, id, k), c = T.compareIn(sh, 'major', root);
-      setEq(keysOf(c.only), keysOf(sh.cells.filter(x => !pcs('major', root).has(mod(at(x.s, x.f))))), `${set} ${key} ${id} mode ${k + 1}: only`);
-      const want = []; for (let s = 0; s < 6; s++) for (let f = sh.lo; f <= sh.hi; f++) { const p = mod(at(s, f)); if (pcs('major', root).has(p) && !pcs(set, key).has(p)) want.push(`${s}_${f}`); }
-      setEq(keysOf(c.extra), want, 'extra');
+      const root = mod(key + mr), sh = T.cagedShape(set, key, id, k), c = T.compareIn(sh, want, root);
+      setEq(keysOf(c.only), keysOf(sh.cells.filter(x => !pcs(want, root).has(mod(at(x.s, x.f))))), `${set} ${key} ${id} mode ${k + 1}: only`);
+      const ex = []; for (let s = 0; s < 6; s++) for (let f = sh.lo; f <= sh.hi; f++) { const p = mod(at(s, f)); if (pcs(want, root).has(p) && !pcs(set, key).has(p)) ex.push(`${s}_${f}`); }
+      setEq(keysOf(c.extra), ex, 'extra');
       for (const x of c.extra) eq(semis(x.deg), mod(at(x.s, x.f) - root), 'extras labelled from the mode root');
     }
   }
-  eq(T.compareDegrees('major', 'major', 1).only.join(' '), '3 10', 'D Dorian vs D major: the ♭3 and ♭7');
+  // The point of choosing by the 3rd: the char note is what is left over.
+  eq(T.compareDegrees('major', 'natural', 1).only.join(' '), '9', 'D Dorian vs D natural minor: only the 6');
+  eq(T.compareDegrees('major', 'natural', 2).only.join(' '), '1', 'E Phrygian vs E natural minor: only the ♭2');
+  eq(T.compareDegrees('major', 'major', 3).only.join(' '), '6', 'F Lydian vs F major: only the ♯4');
+  eq(T.compareDegrees('major', 'major', 4).only.join(' '), '10', 'G Mixolydian vs G major: only the ♭7');
+  eq(T.compareDegrees('major', 'natural', 6).only.join(' '), '1 6', 'B Locrian vs B natural minor: the ♭2 and ♭5');
+  eq(T.compareDegrees('harmonic', 'major', 4).only.join(' '), '1 8 10', 'Phrygian dominant vs major: ♭2 ♭6 ♭7');
   eq([4, 11].map(i => T.spellOn('C♯', 1, 'major', i)).join(' '), 'E♯ B♯', 'C♯ Phrygian (A major) vs C♯ major: spelled from C♯');
 });
 check('natural vs harmonic inside a shape = the other chart at the same spot (what Zak drew, and what nat2har grades)', () => {

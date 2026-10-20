@@ -24,7 +24,7 @@ Trainer's design. Single dev + end user: Zak.
 ## Commands
 - `npm install`, `npm run dev` (natural 5188, harmonic 5189, major 5190),
   `npm run build`
-- `npm run verify` — **the correctness gate** (44,056 assertions; checks
+- `npm run verify` — **the correctness gate** (41,307 assertions; checks
   all three scales, so it is the same script in every repo). Must pass.
 
 ## Integration
@@ -143,15 +143,22 @@ pentatonic, major; harmonic → natural, melodic, minor pentatonic, major;
 major → major pentatonic, Mixolydian, Lydian (Zak's pick — no parallel
 minor).
 
-**With a mode picked** (any but the first), the only option is the **major
-scale on the mode's own root** — D Dorian against D major — because that is
-what a mode's degree names are measured against. `compareIn(sh, 'major',
-modeRoot)` keeps the shape's own notes in the parent key and moves only the
-other scale's root; `compareDegrees(scale, 'major', k)` gives the chips; the
-extras are spelled from the mode root's name (`spellOn`), so C♯ Phrygian's
-parallel major reads E♯ and B♯, not F and C. A mode that *is* the major scale
-(Ionian, inside the natural minor app) gets no compare row. Stepping between
-modes keeps the major comparison on.
+**With a mode picked** (any but the first), the only option is the scale the
+mode is a variation of, **on the mode's own root**, chosen by its 3rd
+(`parallelOf`): the **major scale** if the 3rd is major, the **natural minor**
+if it is ♭3. So D Dorian is laid against D natural minor and only its 6 is
+left — exactly its `char` note — where against D major the ♭3 and ♭7 every
+minor mode has would bury it. (Zak asked for this after a first version
+compared every mode with major.) Minor-based: Dorian, Phrygian, Locrian,
+Locrian ♮6, Dorian ♯4, Ultralocrian. Major-based: Lydian, Mixolydian, Ionian
+♯5, Phrygian dominant, Lydian ♯2. A mode that *is* that scale (Aeolian in
+Major, Ionian in Natural Minor) gets no compare row. For modes `cmp` holds
+`'parallel'`, not a scale id, so stepping from a minor mode to a major one
+keeps the comparison on. `compareIn(sh, target, modeRoot)` keeps the shape's
+own notes in the parent key and moves only the other scale's root;
+`compareDegrees(scale, target, k)` gives the chips; extras are spelled from
+the mode root's name (`spellOn`), so C♯ Phrygian's parallel major would read
+E♯ and B♯, not F and C. verify.mjs types the expected target for every mode.
 
 **One exception:** natural ↔ harmonic inside one of the five shapes uses the
 **other chart at the same spot**. The span rule disagreed with Zak's harmonic
@@ -209,8 +216,9 @@ Everything else is Altered Trainer's design, and its CLAUDE.md explains why:
 - Drill boards: `rowH={36}`, full-bleed (`margin: 0 -12px`), and the tap grid
   is the last SVG child.
 - The fret number for fret 0 is not drawn (the nut is).
-- The Compare row offers the app's neighbour list for mode 1 and the major
-  scale on the mode's root for the others (see Comparison).
+- The Compare row offers the app's neighbour list for mode 1, and the
+  matching major or natural minor on the mode's root for the others (see
+  Comparison).
 
 ## Audio
 Copied from Blues/Altered. It covers the two-layer iOS silent-switch bypass,

@@ -1,7 +1,7 @@
 import { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import { AppHeader, TabBar, ProgressBackup } from '@fretworks/design';
 import {
-  OPEN_MIDI, pc, midiAt, ckey, unkey, pretty, keyNames, SCALES, COMPARE_FOR, degOfScale, spellIn, spellOn,
+  OPEN_MIDI, pc, midiAt, ckey, unkey, pretty, keyNames, SCALES, COMPARE_FOR, degOfScale, spellIn, spellOn, parallelOf,
   mode, MODE_INFO, chordOf, chordName, chordSpell, grip, SHAPES_OF, MODE_IDS, shapeName, getShapes, fullNeck,
   compareIn, compareDegrees, DRILL_FAMILY, BLANK, MODE_DRILLS, SCALE_DRILLS, drillAppliesTo, drillSpec, modeQuestion,
 } from './theory.js';
@@ -76,8 +76,6 @@ function SoundLine({ m, root, style }) {
     </div>
   );
 }
-// A mode that IS the major scale has nothing to compare against it.
-const isMajorMode = m => m.ivs.join() === SCALES.major.iv.join();
 function Row({ label, children }) {
   return <div style={{ display: 'flex', gap: 8 }}><span style={{ color: '#888', flex: '0 0 92px', lineHeight: 1.35, paddingTop: 5 }}>{label}</span><span style={{ flex: 1 }}>{children}</span></div>;
 }
@@ -105,28 +103,31 @@ function PositionsTab({ root, labelMode, view, setView, shapeId, onShapeId, tn, 
   const m = mode(SCALE_ID, modeK);
   const modeRoot = spellIn(SCALE_ID, root, m.offset);
   // The scale itself is compared with its neighbours; any other mode with the
-  // major scale on the mode's OWN root (D Dorian against D major), which is
-  // how its degrees are named in the first place.
-  const cmpOptions = modeK === 0 ? COMPARE_FOR[SCALE_ID] : isMajorMode(m) ? [] : ['major'];
+  // major or natural minor scale on the mode's OWN root, whichever matches
+  // its 3rd (`parallelOf`). For modes, `cmp` holds 'parallel' rather than a
+  // scale id, so the choice survives stepping from a minor mode to a major one.
+  const par = modeK ? parallelOf(SCALE_ID, modeK) : null;
+  const cmpOptions = modeK === 0 ? COMPARE_FOR[SCALE_ID] : par ? ['parallel'] : [];
   const cmpOn = cmpOptions.includes(cmp);
+  const target = cmp === 'parallel' ? par : cmp;
   const cmpRoot = pc(root + m.offset), cmpRootName = modeK ? modeRoot : KEYS[root];
   const thisName = modeK ? `${modeRoot} ${m.name.replace(/ \(.*\)$/, '')}` : keyTitle(root);
   const cmpData = useMemo(() => {
     if (!cmpOn) return null;
-    const c = compareIn(shape, cmp, cmpRoot);
+    const c = compareIn(shape, target, cmpRoot);
     return { only: new Set(c.only.map(x => ckey(x.s, x.f))), extra: c.extra };
-  }, [cmpOn, cmp, shape, cmpRoot]);
-  const diff = cmpOn ? compareDegrees(SCALE_ID, cmp, modeK) : null;
+  }, [cmpOn, target, shape, cmpRoot]);
+  const diff = cmpOn ? compareDegrees(SCALE_ID, target, modeK) : null;
   const ownDeg = i => m.labels[m.ivs.indexOf(i)], ownNote = i => spellIn(SCALE_ID, root, m.offset + i);
   const rm = ROOT_MIDI(root) + m.offset;
   const playBoth = () => {
-    const a = [...m.ivs.map(i => rm + i), rm + 12], b = [...SCALES[cmp].iv.map(i => rm + i), rm + 12];
+    const a = [...m.ivs.map(i => rm + i), rm + 12], b = [...SCALES[target].iv.map(i => rm + i), rm + 12];
     playMidis(a, 0.2); setTimeout(() => playMidis(b, 0.2), a.length * 200 + 650);
   };
-  // Keep comparing with major while stepping through the modes.
+  // Keep comparing while stepping through the modes.
   const pickMode = k => {
     setModeK(k);
-    if (k === 0 ? !COMPARE_FOR[SCALE_ID].includes(cmp) : (cmp !== 'major' || isMajorMode(mode(SCALE_ID, k)))) setCmp('off');
+    if (k === 0 ? !COMPARE_FOR[SCALE_ID].includes(cmp) : (cmp !== 'parallel' || !parallelOf(SCALE_ID, k))) setCmp('off');
   };
   const span = modeRootSpan(shape.cells);
 
@@ -151,7 +152,7 @@ function PositionsTab({ root, labelMode, view, setView, shapeId, onShapeId, tn, 
         <div style={{ fontSize: 9.5, color: '#777', textTransform: 'uppercase', letterSpacing: '.5px', margin: '2px 2px 5px' }}>Compare with</div>
         <div style={{ display: 'flex', gap: 6, overflowX: 'auto', paddingBottom: 4, marginBottom: 8, WebkitOverflowScrolling: 'touch' }}>
           <button onClick={() => setCmp('off')} style={pill(!cmpOn)}>Off</button>
-          {cmpOptions.map(id => <button key={id} onClick={() => setCmp(id)} style={pill(cmp === id)}>{modeK ? `${modeRoot} major` : SCALES[id].short}</button>)}
+          {cmpOptions.map(id => <button key={id} onClick={() => setCmp(id)} style={pill(cmp === id)}>{modeK ? `${modeRoot} ${SCALES[par].title}` : SCALES[id].short}</button>)}
         </div>
       </>}
 
@@ -187,16 +188,16 @@ function PositionsTab({ root, labelMode, view, setView, shapeId, onShapeId, tn, 
       {diff ? (
         <div style={{ ...card, marginTop: 14, borderColor: ACC + '44' }}>
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, marginBottom: 8 }}>
-            <div style={{ fontSize: 13, fontWeight: 800, lineHeight: 1.4 }}>{thisName} <span style={{ color: '#777' }}>vs</span> {cmpRootName} {SCALES[cmp].title}</div>
+            <div style={{ fontSize: 13, fontWeight: 800, lineHeight: 1.4 }}>{thisName} <span style={{ color: '#777' }}>vs</span> {cmpRootName} {SCALES[target].title}</div>
             <PlayBtn small label={'▶ Hear both'} onClick={playBoth} />
           </div>
           <div style={{ fontSize: 12, lineHeight: 2, color: '#ccc' }}>
             <Row label="Both have">{diff.shared.map(i => <Chip key={i} deg={ownDeg(i)} note={ownNote(i)} />)}</Row>
             <Row label={`Only ${modeK ? m.short : shortOf(SCALE_ID)}`}>{diff.only.length ? diff.only.map(i => <Chip key={i} deg={ownDeg(i)} note={ownNote(i)} ringed />) : <span style={{ color: '#777' }}>nothing</span>}</Row>
-            <Row label={`Only ${shortOf(cmp)}`}>{diff.extra.length ? diff.extra.map(i => <Chip key={i} deg={degOfScale(cmp, i)} note={spellOn(cmpRootName, cmpRoot, cmp, i)} dashed />) : <span style={{ color: '#777' }}>nothing</span>}</Row>
+            <Row label={`Only ${shortOf(target)}`}>{diff.extra.length ? diff.extra.map(i => <Chip key={i} deg={degOfScale(target, i)} note={spellOn(cmpRootName, cmpRoot, target, i)} dashed />) : <span style={{ color: '#777' }}>nothing</span>}</Row>
           </div>
           <div style={{ fontSize: 11, color: '#888', lineHeight: 1.6, marginTop: 6 }}>
-            On the neck: ringed = only in {thisName}; dashed = only in {cmpRootName} {SCALES[cmp].title}{neck ? '' : modeK === 0 && cmp === OTHER && view === 'caged' ? `, where the ${SCALES[cmp].short.toLowerCase()} version of this shape puts ${cmp === 'harmonic' ? 'its 7s' : 'them'}` : ', at every fret this shape covers'}.
+            On the neck: ringed = only in {thisName}; dashed = only in {cmpRootName} {SCALES[target].title}{neck ? '' : modeK === 0 && cmp === OTHER && view === 'caged' ? `, where the ${SCALES[cmp].short.toLowerCase()} version of this shape puts ${cmp === 'harmonic' ? 'its 7s' : 'them'}` : ', at every fret this shape covers'}.
           </div>
         </div>
       ) : (
@@ -712,7 +713,7 @@ ${by({
 Tap a chord for a grip: root on the A string, then the 5th, 7th and 3rd on D, G and B (the drop-2 voicing), always within four frets.` },
   { icon: '⚖️', title: 'Comparing scales', body: `"Compare with" lays another scale with the same root over the shape: ${COMPARE_FOR[SCALE_ID].map(id => SCALES[id].title).join(', ')}.
 
-With a mode picked, it offers the major scale on that mode's own root instead — D Dorian against D major — since that is how a mode's degrees are named: Dorian's ♭3 and ♭7 are the notes it has where D major has an F♯ and a C♯.
+With a mode picked, it offers the scale that mode is a variation of, on the mode's own root: the natural minor for a mode with a ♭3, the major scale for one with a major 3rd. So D Dorian is laid against D natural minor, and the only difference left is its natural 6 — the note that gives it its sound. F Lydian against F major leaves only the ♯4.${MAJ ? ' Aeolian is the natural minor itself, so it has nothing to compare.' : NAT ? ' Ionian is the major scale itself, so it has nothing to compare.' : ''}
 
 A normal dot is in both. A ringed dot is only in ${S.name.toLowerCase()}. A dashed circle is only in the other scale, shown at every fret the shape covers${by({
     natural: ' — except harmonic minor, which shows the harmonic chart of the same shape. Its 7s sit one fret below each root, so one can land just outside the natural shape.',
