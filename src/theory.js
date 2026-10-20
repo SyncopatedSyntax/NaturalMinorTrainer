@@ -83,8 +83,13 @@ export function spellDeg(rootName, root, iv, degNum) {
 // named as the APP names its keys (`home`): the minor apps compare G♯ minor
 // with G♯ major, not with A♭ major.
 export function spellIn(scaleId, root, iv, home = scaleId) {
+  return spellOn(keyNames(home)[root], root, scaleId, iv);
+}
+// The same, from a root already named — a mode's root, say: C♯ Phrygian's
+// parallel major is spelled from C♯ even in a key that would call it D♭.
+export function spellOn(rootName, root, scaleId, iv) {
   const i = SCALES[scaleId].iv.indexOf(pc(iv));
-  return i >= 0 ? spellDeg(keyNames(home)[root], root, iv, degNumOf(LABELS[scaleId][i])) : PLAIN[pc(root + iv)];
+  return i >= 0 ? spellDeg(rootName, root, iv, degNumOf(LABELS[scaleId][i])) : PLAIN[pc(root + iv)];
 }
 
 // ── Modes ────────────────────────────────────────────────────────────────
@@ -92,33 +97,47 @@ export function spellIn(scaleId, root, iv, home = scaleId) {
 // rotated; its degree names follow (degreeLabels). The app keeps the KEY as
 // the parent key, so choosing a mode relabels the same shapes from a
 // different root — the shapes stay where they are on the neck.
+// Each mode carries `use` (what it goes over), `char` (the degree, or two,
+// that gives it its sound) and `sound` (one sentence on that). The char
+// degree is the one that separates the mode from its nearest neighbour —
+// Dorian from Aeolian by the 6, Lydian from Ionian by the ♯4 — and
+// verify.mjs checks each one against that neighbour's written formula.
+const CHURCH = {
+  Ionian:     { char: [], sound: 'The yardstick: every other mode is named by how it differs from this one. Its 4 and 7 are the notes its neighbours change (Lydian raises the 4, Mixolydian lowers the 7).' },
+  Dorian:     { char: ['6'], sound: 'The natural 6. Dorian is minor — ♭3 and ♭7 — but its 6 is the major scale\'s, not Aeolian\'s ♭6. That one note makes it the brighter, jazzier minor.' },
+  Phrygian:   { char: ['b2'], sound: 'The ♭2, a half step above the root. Lower Aeolian\'s 2 and you have Phrygian\'s dark, Spanish sound.' },
+  Lydian:     { char: ['#4'], sound: 'The ♯4. Major with one note raised: the 4 that rubs against a major chord becomes a floating ♯11.' },
+  Mixolydian: { char: ['b7'], sound: 'The ♭7. Major with one note lowered — the dominant 7th sound of blues, rock and every V chord.' },
+  Aeolian:    { char: ['b6'], sound: 'The ♭6. It is what separates Aeolian from Dorian, and gives the plain minor key its sad pull down to the 5.' },
+  Locrian:    { char: ['b5'], sound: 'The ♭5 — the only one of the seven without a perfect 5th, which is why its home chord is m7♭5 and it never quite settles.' },
+};
 export const MODE_INFO = {
   natural: [
-    { name: 'Aeolian (natural minor)', short: 'Aeolian', use: 'The minor key itself: over the i chord, and over iv–v–i or i–♭VI–♭VII rock and pop progressions.' },
-    { name: 'Locrian', short: 'Locrian', use: 'Over the iiø (m7♭5) of a minor ii–V. The ♭2 is its dark, unstable colour.' },
-    { name: 'Ionian (major)', short: 'Ionian', use: 'Over ♭III — the relative major. Same notes, centred on the major chord.' },
-    { name: 'Dorian', short: 'Dorian', use: 'Over the iv chord, or any m7 you want brighter than Aeolian: the natural 6 is the difference.' },
-    { name: 'Phrygian', short: 'Phrygian', use: 'Over the v minor chord. The ♭2 gives it its Spanish, metal colour.' },
-    { name: 'Lydian', short: 'Lydian', use: 'Over ♭VI maj7. The ♯4 floats — the dreamiest of the seven.' },
-    { name: 'Mixolydian', short: 'Mixolydian', use: 'Over ♭VII7, the dominant that leads back to i in rock (♭VI–♭VII–i).' },
+    { name: 'Aeolian (natural minor)', short: 'Aeolian', use: 'The minor key itself: over the i chord, and over iv–v–i or i–♭VI–♭VII rock and pop progressions.', ...CHURCH.Aeolian },
+    { name: 'Locrian', short: 'Locrian', use: 'Over the iiø (m7♭5) of a minor ii–V.', ...CHURCH.Locrian },
+    { name: 'Ionian (major)', short: 'Ionian', use: 'Over ♭III — the relative major. Same notes, centred on the major chord.', ...CHURCH.Ionian },
+    { name: 'Dorian', short: 'Dorian', use: 'Over the iv chord, or any m7 you want brighter than Aeolian.', ...CHURCH.Dorian },
+    { name: 'Phrygian', short: 'Phrygian', use: 'Over the v minor chord, and in flamenco and metal riffs.', ...CHURCH.Phrygian },
+    { name: 'Lydian', short: 'Lydian', use: 'Over ♭VI maj7 — the dreamiest of the seven.', ...CHURCH.Lydian },
+    { name: 'Mixolydian', short: 'Mixolydian', use: 'Over ♭VII7, the dominant that leads back to i in rock (♭VI–♭VII–i).', ...CHURCH.Mixolydian },
   ],
   harmonic: [
-    { name: 'Harmonic minor', short: 'Harmonic', use: 'Over the i chord, especially i m(maj7) and as a line resolving onto i. The 7 leads up into the root.' },
-    { name: 'Locrian ♮6', short: 'Locrian ♮6', use: 'Over the iiø of a minor ii–V–i: Locrian with a natural 6.' },
-    { name: 'Ionian ♯5', short: 'Ionian ♯5', use: 'Over ♭III+maj7, the augmented major 7th chord.' },
-    { name: 'Dorian ♯4', short: 'Dorian ♯4', use: 'Over the iv m7 when you want an exotic ♯4 (♯11): Ukrainian Dorian.' },
-    { name: 'Phrygian dominant', short: 'Phryg. dom.', use: 'Over V7(♭9) resolving to the minor i — the classic minor ii–V–i sound, and flamenco.' },
-    { name: 'Lydian ♯2', short: 'Lydian ♯2', use: 'Over ♭VI maj7 with a ♯9 and ♯11: bright and exotic.' },
-    { name: 'Ultralocrian', short: 'Ultralocrian', use: 'Over vii°7, the diminished chord that substitutes for V7♭9.' },
+    { name: 'Harmonic minor', short: 'Harmonic', use: 'Over the i chord, especially i m(maj7), and for lines that resolve onto i.', char: ['7'], sound: 'The 7 — Aeolian\'s ♭7 raised to a leading tone a half step under the root. The three-fret jump from the ♭6 up to it is the scale\'s exotic sound.' },
+    { name: 'Locrian ♮6', short: 'Locrian ♮6', use: 'Over the iiø of a minor ii–V–i.', char: ['6'], sound: 'The natural 6: Locrian with its ♭6 raised. The ♭2 and ♭5 are still there.' },
+    { name: 'Ionian ♯5', short: 'Ionian ♯5', use: 'Over ♭III+maj7, the augmented major 7th chord.', char: ['#5'], sound: 'The ♯5: major with the 5th raised, which makes its home chord an augmented +maj7.' },
+    { name: 'Dorian ♯4', short: 'Dorian ♯4', use: 'Over the iv m7 when you want an exotic ♯11: Ukrainian Dorian.', char: ['#4'], sound: 'The ♯4: Dorian with the 4 raised. The three-fret jump from the ♭3 up to it is the Ukrainian, klezmer sound.' },
+    { name: 'Phrygian dominant', short: 'Phryg. dom.', use: 'Over V7(♭9) resolving to the minor i — the classic minor ii–V–i sound.', char: ['3'], sound: 'The major 3: Phrygian with its ♭3 raised. Above the ♭2 it leaves a three-fret jump — the flamenco and Middle-Eastern sound.' },
+    { name: 'Lydian ♯2', short: 'Lydian ♯2', use: 'Over ♭VI maj7 when you want a ♯9 and ♯11: bright and exotic.', char: ['#2'], sound: 'The ♯2: Lydian with the 2 raised, a three-fret jump up from the root, on top of Lydian\'s ♯4.' },
+    { name: 'Ultralocrian', short: 'Ultralocrian', use: 'Over vii°7, the diminished chord that stands in for V7♭9.', char: ['b4', 'bb7'], sound: 'The ♭4 and 𝄫7: Locrian with two more notes lowered. They sound like a major 3rd and a 6th, which is why its home chord is a diminished 7th.' },
   ],
   major: [
-    { name: 'Ionian (major)', short: 'Ionian', use: 'The major key itself: over the Imaj7 chord, and anything that sits on the home chord.' },
-    { name: 'Dorian', short: 'Dorian', use: 'Over the ii m7 — the ii of a ii–V–I. Minor, with a bright natural 6.' },
-    { name: 'Phrygian', short: 'Phrygian', use: 'Over the iii m7. The ♭2 makes it the darkest of the minor-sounding modes.' },
-    { name: 'Lydian', short: 'Lydian', use: 'Over IVmaj7. The ♯4 floats where the major scale\'s 4 would clash with the chord\'s 3rd.' },
-    { name: 'Mixolydian', short: 'Mixolydian', use: 'Over V7, the dominant: major with a ♭7. Blues, rock and the V of a ii–V–I.' },
-    { name: 'Aeolian (natural minor)', short: 'Aeolian', use: 'Over the vi m7 — the relative minor. Same notes, centred on the minor chord.' },
-    { name: 'Locrian', short: 'Locrian', use: 'Over viiø7 (m7♭5), the half-diminished chord. The least stable of the seven.' },
+    { name: 'Ionian (major)', short: 'Ionian', use: 'The major key itself: over the Imaj7 chord, and anything that sits on the home chord.', ...CHURCH.Ionian },
+    { name: 'Dorian', short: 'Dorian', use: 'Over the ii m7 — the ii of a ii–V–I.', ...CHURCH.Dorian },
+    { name: 'Phrygian', short: 'Phrygian', use: 'Over the iii m7.', ...CHURCH.Phrygian },
+    { name: 'Lydian', short: 'Lydian', use: 'Over IVmaj7.', ...CHURCH.Lydian },
+    { name: 'Mixolydian', short: 'Mixolydian', use: 'Over V7, the dominant — blues, rock and the V of a ii–V–I.', ...CHURCH.Mixolydian },
+    { name: 'Aeolian (natural minor)', short: 'Aeolian', use: 'Over the vi m7 — the relative minor. Same notes, centred on the minor chord.', ...CHURCH.Aeolian },
+    { name: 'Locrian', short: 'Locrian', use: 'Over viiø7 (m7♭5), the half-diminished chord.', ...CHURCH.Locrian },
   ],
 };
 export function modeIvs(scaleId, k) {
@@ -294,12 +313,16 @@ export function rootSpan(sh) {
 // the other chart would need a fret below 0 — the open A shape in A — that
 // note is simply not on the neck.)
 const CHART_PAIR = { natural: 'harmonic', harmonic: 'natural' };
-export function compareIn(sh, targetId) {
-  const tp = new Set(SCALES[targetId].iv.map(i => pc(sh.key + i)));
+//
+// `root` moves the other scale's root: a mode is compared with the major
+// scale on the MODE's root (D Dorian against D major), while the shape's own
+// notes are still the parent key's.
+export function compareIn(sh, targetId, root = sh.key) {
+  const tp = new Set(SCALES[targetId].iv.map(i => pc(root + i)));
   const bp = new Set(SCALES[sh.scale].iv.map(i => pc(sh.key + i)));
   const shared = [], only = [], extra = [];
   for (const c of sh.cells) (tp.has(pc(midiAt(c.s, c.f))) ? shared : only).push(c);
-  if (sh.kind === 'caged' && CHART_PAIR[sh.scale] === targetId) {
+  if (sh.kind === 'caged' && CHART_PAIR[sh.scale] === targetId && root === sh.key) {
     const mine = keysOf(sh.cells);
     for (const c of shapeCells(targetId, sh.key, sh.id, sh.shift))
       if (c.f >= 0 && !mine.has(ckey(c.s, c.f))) extra.push({ ...c, deg: degOfScale(targetId, midiAt(c.s, c.f) - sh.key) });
@@ -307,12 +330,14 @@ export function compareIn(sh, targetId) {
   }
   for (let s = 0; s < 6; s++) for (let f = sh.lo; f <= sh.hi; f++) {
     const p = pc(midiAt(s, f));
-    if (tp.has(p) && !bp.has(p)) extra.push({ s, f, deg: degOfScale(targetId, p - sh.key) });
+    if (tp.has(p) && !bp.has(p)) extra.push({ s, f, deg: degOfScale(targetId, p - root) });
   }
   return { shared, only, extra };
 }
-export function compareDegrees(scaleId, targetId) {
-  const b = SCALES[scaleId].iv, t = SCALES[targetId].iv;
+// In intervals from the root being compared: the scale's own (k = 0) or mode
+// k's, against the other scale built on that same root.
+export function compareDegrees(scaleId, targetId, k = 0) {
+  const b = modeIvs(scaleId, k), t = SCALES[targetId].iv;
   return { shared: b.filter(i => t.includes(i)), only: b.filter(i => !t.includes(i)), extra: t.filter(i => !b.includes(i)) };
 }
 

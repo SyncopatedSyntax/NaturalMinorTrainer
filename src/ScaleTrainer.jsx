@@ -1,7 +1,7 @@
 import { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import { AppHeader, TabBar, ProgressBackup } from '@fretworks/design';
 import {
-  OPEN_MIDI, pc, midiAt, ckey, unkey, pretty, keyNames, SCALES, COMPARE_FOR, degOfScale, spellIn,
+  OPEN_MIDI, pc, midiAt, ckey, unkey, pretty, keyNames, SCALES, COMPARE_FOR, degOfScale, spellIn, spellOn,
   mode, MODE_INFO, chordOf, chordName, chordSpell, grip, SHAPES_OF, MODE_IDS, shapeName, getShapes, fullNeck,
   compareIn, compareDegrees, DRILL_FAMILY, BLANK, MODE_DRILLS, SCALE_DRILLS, drillAppliesTo, drillSpec, modeQuestion,
 } from './theory.js';
@@ -65,6 +65,19 @@ function Chip({ deg, note, dashed, ringed }) {
   if (dashed) return <span style={{ display: 'inline-block', padding: '2px 8px', borderRadius: 6, fontWeight: 800, fontSize: 11.5, border: '1.5px dashed #b7b5cf', color: '#d4d2e8', margin: '2px 4px 2px 0' }}>{pretty(deg)}{note ? ` · ${note}` : ''}</span>;
   return <span style={{ display: 'inline-block', padding: '2px 8px', borderRadius: 6, fontWeight: 800, fontSize: 11.5, background: col, color: txtOn(col), margin: '2px 4px 2px 0', boxShadow: ringed ? `0 0 0 2px #0f0e17, 0 0 0 3.5px ${ACC}` : 'none' }}>{pretty(deg)}{note ? ` · ${note}` : ''}</span>;
 }
+// The degree that gives mode `m` its sound, named in this key, and why.
+function SoundLine({ m, root, style }) {
+  const noteOf = d => spellIn(SCALE_ID, root, m.offset + m.ivs[m.labels.indexOf(d)]);
+  return (
+    <div style={{ fontSize: 12, color: '#bbb', lineHeight: 1.6, ...style }}>
+      <b style={{ color: '#fff' }}>Its sound{m.char.length ? ':' : ''}</b>{' '}
+      {m.char.map(d => <Chip key={d} deg={d} note={noteOf(d)} />)}
+      {m.char.length ? ' ' : ' — '}{m.sound}
+    </div>
+  );
+}
+// A mode that IS the major scale has nothing to compare against it.
+const isMajorMode = m => m.ivs.join() === SCALES.major.iv.join();
 function Row({ label, children }) {
   return <div style={{ display: 'flex', gap: 8 }}><span style={{ color: '#888', flex: '0 0 92px', lineHeight: 1.35, paddingTop: 5 }}>{label}</span><span style={{ flex: 1 }}>{children}</span></div>;
 }
@@ -89,31 +102,44 @@ function PositionsTab({ root, labelMode, view, setView, shapeId, onShapeId, tn, 
   const cur = list[idx];
   const step = d => { const n = list[(idx + d + list.length) % list.length]; if (view === 'tnps') setTn(Number(n.id.slice(1))); else onShapeId(n.id); };
   const shape = neck ? fullNeck(SCALE_ID, root, modeK) : cur;
-  const cmpOn = modeK === 0 && cmp !== 'off';
-  const cmpData = useMemo(() => {
-    if (!cmpOn) return null;
-    const c = compareIn(shape, cmp);
-    return { only: new Set(c.only.map(x => ckey(x.s, x.f))), extra: c.extra };
-  }, [cmpOn, cmp, shape]);
   const m = mode(SCALE_ID, modeK);
   const modeRoot = spellIn(SCALE_ID, root, m.offset);
-  const diff = cmpOn ? compareDegrees(SCALE_ID, cmp) : null;
-  const rm = ROOT_MIDI(root);
+  // The scale itself is compared with its neighbours; any other mode with the
+  // major scale on the mode's OWN root (D Dorian against D major), which is
+  // how its degrees are named in the first place.
+  const cmpOptions = modeK === 0 ? COMPARE_FOR[SCALE_ID] : isMajorMode(m) ? [] : ['major'];
+  const cmpOn = cmpOptions.includes(cmp);
+  const cmpRoot = pc(root + m.offset), cmpRootName = modeK ? modeRoot : KEYS[root];
+  const thisName = modeK ? `${modeRoot} ${m.name.replace(/ \(.*\)$/, '')}` : keyTitle(root);
+  const cmpData = useMemo(() => {
+    if (!cmpOn) return null;
+    const c = compareIn(shape, cmp, cmpRoot);
+    return { only: new Set(c.only.map(x => ckey(x.s, x.f))), extra: c.extra };
+  }, [cmpOn, cmp, shape, cmpRoot]);
+  const diff = cmpOn ? compareDegrees(SCALE_ID, cmp, modeK) : null;
+  const ownDeg = i => m.labels[m.ivs.indexOf(i)], ownNote = i => spellIn(SCALE_ID, root, m.offset + i);
+  const rm = ROOT_MIDI(root) + m.offset;
   const playBoth = () => {
-    const a = [...S.iv.map(i => rm + i), rm + 12], b = [...SCALES[cmp].iv.map(i => rm + i), rm + 12];
+    const a = [...m.ivs.map(i => rm + i), rm + 12], b = [...SCALES[cmp].iv.map(i => rm + i), rm + 12];
     playMidis(a, 0.2); setTimeout(() => playMidis(b, 0.2), a.length * 200 + 650);
+  };
+  // Keep comparing with major while stepping through the modes.
+  const pickMode = k => {
+    setModeK(k);
+    if (k === 0 ? !COMPARE_FOR[SCALE_ID].includes(cmp) : (cmp !== 'major' || isMajorMode(mode(SCALE_ID, k)))) setCmp('off');
   };
   const span = modeRootSpan(shape.cells);
 
   return (
     <div style={{ padding: '14px 12px' }}>
       <div style={{ fontSize: 9.5, color: '#777', textTransform: 'uppercase', letterSpacing: '.5px', margin: '0 2px 5px' }}>Mode</div>
-      <ModeChips modeK={modeK} setModeK={k => { setModeK(k); if (k) setCmp('off'); }} />
-      {modeK > 0 && (
+      <ModeChips modeK={modeK} setModeK={pickMode} />
+      {modeK > 0 && <>
         <div style={{ fontSize: 12, color: '#bbb', lineHeight: 1.55, margin: '6px 2px 0' }}>
           <b style={{ color: ACC }}>{modeRoot} {m.name}</b> — the same notes and shapes as {keyTitle(root)}, counted from {modeRoot}. Labels show its degrees; the shapes stay where they are.
         </div>
-      )}
+        <SoundLine m={m} root={root} style={{ margin: '6px 2px 0' }} />
+      </>}
 
       <div style={{ display: 'flex', gap: 6, margin: '12px 0 10px' }}>
         <button onClick={() => setView('caged')} style={seg(view === 'caged')}>5 Shapes</button>
@@ -121,11 +147,11 @@ function PositionsTab({ root, labelMode, view, setView, shapeId, onShapeId, tn, 
         <button onClick={() => setView('neck')} style={seg(neck)}>Full neck</button>
       </div>
 
-      {modeK === 0 && <>
+      {cmpOptions.length > 0 && <>
         <div style={{ fontSize: 9.5, color: '#777', textTransform: 'uppercase', letterSpacing: '.5px', margin: '2px 2px 5px' }}>Compare with</div>
         <div style={{ display: 'flex', gap: 6, overflowX: 'auto', paddingBottom: 4, marginBottom: 8, WebkitOverflowScrolling: 'touch' }}>
-          <button onClick={() => setCmp('off')} style={pill(cmp === 'off')}>Off</button>
-          {COMPARE_FOR[SCALE_ID].map(id => <button key={id} onClick={() => setCmp(id)} style={pill(cmp === id)}>{SCALES[id].short}</button>)}
+          <button onClick={() => setCmp('off')} style={pill(!cmpOn)}>Off</button>
+          {cmpOptions.map(id => <button key={id} onClick={() => setCmp(id)} style={pill(cmp === id)}>{modeK ? `${modeRoot} major` : SCALES[id].short}</button>)}
         </div>
       </>}
 
@@ -161,22 +187,23 @@ function PositionsTab({ root, labelMode, view, setView, shapeId, onShapeId, tn, 
       {diff ? (
         <div style={{ ...card, marginTop: 14, borderColor: ACC + '44' }}>
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, marginBottom: 8 }}>
-            <div style={{ fontSize: 13, fontWeight: 800, lineHeight: 1.4 }}>{keyTitle(root)} <span style={{ color: '#777' }}>vs</span> {KEYS[root]} {SCALES[cmp].title}</div>
+            <div style={{ fontSize: 13, fontWeight: 800, lineHeight: 1.4 }}>{thisName} <span style={{ color: '#777' }}>vs</span> {cmpRootName} {SCALES[cmp].title}</div>
             <PlayBtn small label={'▶ Hear both'} onClick={playBoth} />
           </div>
           <div style={{ fontSize: 12, lineHeight: 2, color: '#ccc' }}>
-            <Row label="Both have">{diff.shared.map(i => <Chip key={i} deg={degOfScale(SCALE_ID, i)} note={spellIn(SCALE_ID, root, i)} />)}</Row>
-            <Row label={`Only ${shortOf(SCALE_ID)}`}>{diff.only.length ? diff.only.map(i => <Chip key={i} deg={degOfScale(SCALE_ID, i)} note={spellIn(SCALE_ID, root, i)} ringed />) : <span style={{ color: '#777' }}>nothing</span>}</Row>
-            <Row label={`Only ${shortOf(cmp)}`}>{diff.extra.length ? diff.extra.map(i => <Chip key={i} deg={degOfScale(cmp, i)} note={spellIn(cmp, root, i, SCALE_ID)} dashed />) : <span style={{ color: '#777' }}>nothing</span>}</Row>
+            <Row label="Both have">{diff.shared.map(i => <Chip key={i} deg={ownDeg(i)} note={ownNote(i)} />)}</Row>
+            <Row label={`Only ${modeK ? m.short : shortOf(SCALE_ID)}`}>{diff.only.length ? diff.only.map(i => <Chip key={i} deg={ownDeg(i)} note={ownNote(i)} ringed />) : <span style={{ color: '#777' }}>nothing</span>}</Row>
+            <Row label={`Only ${shortOf(cmp)}`}>{diff.extra.length ? diff.extra.map(i => <Chip key={i} deg={degOfScale(cmp, i)} note={spellOn(cmpRootName, cmpRoot, cmp, i)} dashed />) : <span style={{ color: '#777' }}>nothing</span>}</Row>
           </div>
           <div style={{ fontSize: 11, color: '#888', lineHeight: 1.6, marginTop: 6 }}>
-            On the neck: ringed = only in {keyTitle(root)}; dashed = only in {KEYS[root]} {SCALES[cmp].title}{neck ? '' : cmp === OTHER && view === 'caged' ? `, where the ${SCALES[cmp].short.toLowerCase()} version of this shape puts ${cmp === 'harmonic' ? 'its 7s' : 'them'}` : ', at every fret this shape covers'}.
+            On the neck: ringed = only in {thisName}; dashed = only in {cmpRootName} {SCALES[cmp].title}{neck ? '' : modeK === 0 && cmp === OTHER && view === 'caged' ? `, where the ${SCALES[cmp].short.toLowerCase()} version of this shape puts ${cmp === 'harmonic' ? 'its 7s' : 'them'}` : ', at every fret this shape covers'}.
           </div>
         </div>
       ) : (
         <div style={{ display: 'flex', flexWrap: 'wrap', gap: 10, marginTop: 14, justifyContent: 'center' }}>
           {m.labels.map((d, i) => <span key={d} style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: 10.5, color: '#aaa' }}>
-            <span style={{ width: 12, height: 12, borderRadius: '50%', background: DC[d] || '#888', display: 'inline-block', boxShadow: d === 'R' ? '0 0 0 1.5px #fff' : 'none' }} />{pretty(d)} {spellIn(SCALE_ID, root, m.offset + m.ivs[i])}</span>)}
+            <span style={{ width: 12, height: 12, borderRadius: '50%', background: DC[d] || '#888', display: 'inline-block', boxShadow: d === 'R' ? '0 0 0 1.5px #fff' : modeK > 0 && m.char.includes(d) ? `0 0 0 2px #0f0e17, 0 0 0 3.5px ${ACC}` : 'none' }} />
+            <span style={modeK > 0 && m.char.includes(d) ? { color: ACC, fontWeight: 800 } : null}>{pretty(d)} {spellIn(SCALE_ID, root, m.offset + m.ivs[i])}</span></span>)}
         </div>
       )}
     </div>
@@ -209,9 +236,10 @@ function ModesTab({ root, onSee }) {
             {isO && (
               <div style={{ padding: '0 13px 13px' }}>
                 <div style={{ lineHeight: 1.9, marginBottom: 6 }}>
-                  {m.labels.map((d, i) => <Chip key={d} deg={d} note={spellIn(SCALE_ID, root, m.offset + m.ivs[i])} />)}
+                  {m.labels.map((d, i) => <Chip key={d} deg={d} note={spellIn(SCALE_ID, root, m.offset + m.ivs[i])} ringed={m.char.includes(d)} />)}
                 </div>
-                <div style={{ fontSize: 12.5, color: '#ccc', lineHeight: 1.6, marginBottom: 10 }}>{info.use}</div>
+                <div style={{ fontSize: 12.5, color: '#ccc', lineHeight: 1.6, marginBottom: 8 }}>{info.use}</div>
+                <SoundLine m={m} root={root} style={{ marginBottom: 10 }} />
                 <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
                   <PlayBtn label={'▶ Hear it'} onClick={() => playMode(root, k)} />
                   <button onClick={() => onSee(k)} style={{ background: 'transparent', color: ACC, border: `1px solid ${ACC}66`, borderRadius: 8, padding: '8px 13px', fontSize: 12, fontWeight: 800, cursor: 'pointer', minHeight: 42, touchAction: 'manipulation' }}>See it on the neck</button>
@@ -398,7 +426,7 @@ function PracticeTab({ root, labelMode, settings, srs, onGrade, focusId, onFocus
               <div style={{ fontSize: 13, color: answer.correct ? '#2ed573' : '#ffb4b4', fontWeight: 700, lineHeight: 1.5 }}>
                 {answer.correct ? 'Yes.' : `It’s ${info.name} over ${chordName(SCALE_ID, it.root, q.answer)}.`}
               </div>
-              <div style={{ fontSize: 12, color: '#aaa', lineHeight: 1.6, marginTop: 5 }}>{info.use}</div>
+              <div style={{ fontSize: 12, color: '#aaa', lineHeight: 1.6, marginTop: 5 }}>{info.use} {info.sound}</div>
               <button onClick={nextQ} style={{ ...primary, marginTop: 10 }}>Next {'›'}</button>
             </div>
           )}
@@ -664,6 +692,8 @@ Its RELATIVE MINOR, a minor 3rd down (on the 6th degree), has exactly the same n
 How the 7s are placed: every 7 sits ONE FRET BELOW A ROOT on the same string. That is how each ♭7 of the natural minor shape turns into a 7 — and it is the fastest way to find them.`}` },
   { icon: '🎼', title: 'Modes', body: `Start the same seven notes from each of the seven degrees and you get seven modes. The app keeps the KEY fixed: pick a mode and the same shapes stay where they are, relabelled from the new root.
 
+Each mode's "Its sound" line names the degree that makes it sound like itself — the one note that separates it from its nearest neighbour (Dorian's natural 6 against Aeolian's ♭6, Lydian's ♯4 against Ionian's 4). That degree is ringed in the colour key under the shape and in the Modes tab.
+
 ${by({
     natural: 'Natural minor\'s modes are the seven church modes — Aeolian, Locrian, Ionian, Dorian, Phrygian, Lydian, Mixolydian — counted from the minor.',
     harmonic: 'The most used is the 5th: Phrygian dominant, over the V7(♭9) of a minor key. The 7th, Ultralocrian, fits the diminished vii°7 that often stands in for that V7.',
@@ -681,6 +711,8 @@ ${by({
 
 Tap a chord for a grip: root on the A string, then the 5th, 7th and 3rd on D, G and B (the drop-2 voicing), always within four frets.` },
   { icon: '⚖️', title: 'Comparing scales', body: `"Compare with" lays another scale with the same root over the shape: ${COMPARE_FOR[SCALE_ID].map(id => SCALES[id].title).join(', ')}.
+
+With a mode picked, it offers the major scale on that mode's own root instead — D Dorian against D major — since that is how a mode's degrees are named: Dorian's ♭3 and ♭7 are the notes it has where D major has an F♯ and a C♯.
 
 A normal dot is in both. A ringed dot is only in ${S.name.toLowerCase()}. A dashed circle is only in the other scale, shown at every fret the shape covers${by({
     natural: ' — except harmonic minor, which shows the harmonic chart of the same shape. Its 7s sit one fret below each root, so one can land just outside the natural shape.',

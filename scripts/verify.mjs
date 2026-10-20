@@ -189,6 +189,33 @@ check('each mode’s intervals and degree names, from the written formulas', () 
     eq(m.offset, IV[set][k], 'starts on degree k');
   });
 });
+// The degree that gives each mode its sound, and the neighbour it is told
+// apart from — written as formulas here, so the claim is checked, not copied.
+const F = {
+  Ionian: '1 2 3 4 5 6 7', Dorian: '1 2 b3 4 5 6 b7', Phrygian: '1 b2 b3 4 5 b6 b7', Lydian: '1 2 3 #4 5 6 7',
+  Mixolydian: '1 2 3 4 5 6 b7', Aeolian: '1 2 b3 4 5 b6 b7', Locrian: '1 b2 b3 4 b5 b6 b7',
+};
+const CHAR = {
+  //            char degrees        neighbour it differs from   three-fret jump (low, high) the text claims
+  natural:  [[['b6'], F.Dorian], [['b5'], F.Phrygian], [[], null], [['6'], F.Aeolian], [['b2'], F.Aeolian], [['#4'], F.Ionian], [['b7'], F.Ionian]],
+  major:    [[[], null], [['6'], F.Aeolian], [['b2'], F.Aeolian], [['#4'], F.Ionian], [['b7'], F.Ionian], [['b6'], F.Dorian], [['b5'], F.Phrygian]],
+  harmonic: [[['7'], F.Aeolian, ['b6', '7']], [['6'], F.Locrian], [['#5'], F.Ionian], [['#4'], F.Dorian, ['b3', '#4']], [['3'], F.Phrygian, ['b2', '3']], [['#2'], F.Lydian, ['R', '#2']], [['b4', 'bb7'], F.Locrian]],
+};
+check('each mode’s sound: its char degree is exactly what separates it from its neighbour', () => {
+  for (const set of SC) CHAR[set].forEach(([char, nb, jump], k) => {
+    const m = T.mode(set, k);
+    eq(m.char, char, `${set} mode ${k + 1} (${m.short}) char`);
+    ok(typeof m.sound === 'string' && m.sound.length > 20, `${set} mode ${k + 1} has a sound line`);
+    for (const d of char) ok(m.labels.includes(d), `${set} ${m.short}: ${d} is one of its degrees`);
+    for (const d of char) ok(m.sound.includes(T.pretty(d === 'R' ? 'R' : d.replace(/^(?=\d)/, ''))), `${set} ${m.short}: the sound line names ${d}`);
+    if (nb) {
+      const mine = MODE_FORMULA[set][k][0].split(' '), theirs = nb.split(' ');
+      const differ = mine.filter((d, n) => d !== theirs[n]).map(d => d.replace(/^1$/, 'R'));
+      eq(differ, char, `${set} ${m.short} vs its neighbour: differs exactly at`);
+    }
+    if (jump) eq(semis(jump[1]) - semis(jump[0]), 3, `${set} ${m.short}: ${jump.join('→')} is a three-fret jump`);
+  });
+});
 check('choosing a mode relabels the same dots from the new root', () => {
   for (const set of SC) for (const key of KEYS) for (let k = 0; k < 7; k++) {
     const a = T.cagedShape(set, key, IDS[set][0], 0), b = T.cagedShape(set, key, IDS[set][0], k);
@@ -288,6 +315,25 @@ check('shared / only / extra, re-derived for every shape, key and target', () =>
     const want = []; for (let s = 0; s < 6; s++) for (let f = sh.lo; f <= sh.hi; f++) { const p = mod(at(s, f)); if (pcs(t, key).has(p) && !pcs(set, key).has(p)) want.push(`${s}_${f}`); }
     setEq(keysOf(c.extra), want, 'extra');
   }
+});
+check('a mode against the major scale on the mode’s own root', () => {
+  for (const set of SC) for (let k = 1; k < 7; k++) {
+    const mr = IV[set][k];
+    const mine = IV[set].map(i => mod(i - mr)).sort((a, b) => a - b);
+    const d = T.compareDegrees(set, 'major', k);
+    setEq(d.shared.map(String), mine.filter(i => IV.major.includes(i)).map(String), `${set} mode ${k + 1} shared`);
+    setEq(d.only.map(String), mine.filter(i => !IV.major.includes(i)).map(String), 'only');
+    setEq(d.extra.map(String), IV.major.filter(i => !mine.includes(i)).map(String), 'extra');
+    for (const key of KEYS) for (const id of IDS[set]) {
+      const root = mod(key + mr), sh = T.cagedShape(set, key, id, k), c = T.compareIn(sh, 'major', root);
+      setEq(keysOf(c.only), keysOf(sh.cells.filter(x => !pcs('major', root).has(mod(at(x.s, x.f))))), `${set} ${key} ${id} mode ${k + 1}: only`);
+      const want = []; for (let s = 0; s < 6; s++) for (let f = sh.lo; f <= sh.hi; f++) { const p = mod(at(s, f)); if (pcs('major', root).has(p) && !pcs(set, key).has(p)) want.push(`${s}_${f}`); }
+      setEq(keysOf(c.extra), want, 'extra');
+      for (const x of c.extra) eq(semis(x.deg), mod(at(x.s, x.f) - root), 'extras labelled from the mode root');
+    }
+  }
+  eq(T.compareDegrees('major', 'major', 1).only.join(' '), '3 10', 'D Dorian vs D major: the ♭3 and ♭7');
+  eq([4, 11].map(i => T.spellOn('C♯', 1, 'major', i)).join(' '), 'E♯ B♯', 'C♯ Phrygian (A major) vs C♯ major: spelled from C♯');
 });
 check('natural vs harmonic inside a shape = the other chart at the same spot (what Zak drew, and what nat2har grades)', () => {
   for (const [set, t] of [['natural', 'harmonic'], ['harmonic', 'natural']]) for (const key of KEYS) for (const id of MINOR_IDS) {
