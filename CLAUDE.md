@@ -13,8 +13,9 @@ made in all three repos**, or they drift; check with
 Each teaches its scale in Zak's five CAGED shapes, plus generated
 three-notes-per-string patterns and the full neck. It covers the scale's seven
 modes and the seven chords of the key (Scale Map), compares the scale with
-its neighbours (see Comparison), and drills it all with spaced repetition. Part of the **Fretworks** toolbox; the practice side is Altered /
-Blues Trainer's design. Single dev + end user: Zak.
+its neighbours (see Comparison), and drills it all with spaced repetition.
+Part of the **Fretworks** toolbox; the practice side is Altered / Blues
+Trainer's design. Single dev + end user: Zak.
 
 - Toolbox-wide conventions (git-dep workflow, multi-zone, single PWA,
   verify-in-prod, accounts + sync rules, naming): the Fretworks root
@@ -34,7 +35,7 @@ Blues Trainer's design. Single dev + end user: Zak.
 | accent | rose pink `#f472b6` | lime `#a3e635` | sky cyan `#22d3ee` |
 | emoji | 🌙 | 🎻 | ☀️ |
 | storage prefix | `nm_` | `hm_` | `mj_` |
-| Vercel project | natural-minor-trainer | harmonic-minor-trainer | major-scale-trainer |
+| Vercel project | natural-minor-trainer | harmonic-minor-trainer | major-scale-trainer (domain `-murex`) |
 | home key | A minor | A minor | C major |
 
 Learning path: Blues → **Major → Natural → Harmonic** → Melodic Minor.
@@ -99,7 +100,7 @@ the harmonic one needs fret −1 for its 7, so `chartShift` puts the two an
 octave apart. Anything that compares the two shapes must use `pairShift`.
 
 ## Modes, chords, grips
-The key stays the **parent** minor key. Choosing a mode relabels the same
+The key stays the **parent** key. Choosing a mode relabels the same
 shapes from the mode's root (`mode()`, `modeDeg()`); the shapes do not move.
 Degree names come from `degreeLabels()`, which measures each degree against
 the major scale's degree **of the same number** — so Lydian ♯2 has a ♯2, not
@@ -139,7 +140,8 @@ charts and the Natural → harmonic drill. verify.mjs pins that "shape − only 
 extra" is exactly the other chart.
 
 ## Practice
-Cards are `shape|drill` for E/D/C/A/G and `M1..M7|drill` for the modes. The
+Cards are `shape|drill` for the five shapes (E/D/C/A/G in the minor apps,
+G/E/D/C/A in Major) and `M1..M7|drill` for the modes. The
 key is a per-rep variable, never part of the card id.
 
 Drills (`SCALE_DRILLS` decides which app gets which, and which are on by
