@@ -4,10 +4,12 @@
 //  Ported from Blues Scale Trainer (itself from Altered). Cards are
 //  `shape|drill`: the five CAGED shapes carry the fretboard drills, and seven
 //  mode "shapes" (M1..M7) carry the mode questions. Each app has one scale,
-//  and its own storage prefix, so the scale is not part of the id.
+//  and its own storage prefix, so the scale is not part of the id. Shape names
+//  differ by scale (the major ones are G E D C A), so everything that walks
+//  the deck takes the app's own list, `cardShapes(scaleId)`.
 // ════════════════════════════════════════════════════════════════════════
-import { DRILLS, KEY_DRILLS, SHAPE_IDS, MODE_IDS, drillAppliesTo } from './theory.js';
-export const CARD_SHAPES = [...SHAPE_IDS, ...MODE_IDS];
+import { DRILLS, KEY_DRILLS, SHAPES_OF, MODE_IDS, drillAppliesTo } from './theory.js';
+export const cardShapes = scaleId => [...SHAPES_OF[scaleId], ...MODE_IDS];
 
 // SM-2 copied verbatim from triads-trainer/src/TriadTrainer.jsx:32-46, which is
 // byte-identical to Diatonic's and Altered's. Do not re-derive it; a fix in one
@@ -32,7 +34,7 @@ export const shuffle = a => { const b = [...a]; for (let i = b.length - 1; i > 0
 const popcount = n => { let c = 0; while (n) { n &= n - 1; c++; } return c; };
 
 export const cardId = (shape, drill) => `${shape}|${drill}`;
-export function buildCards(drills, shapes = CARD_SHAPES) {
+export function buildCards(drills, shapes) {
   const out = [];
   for (const shape of shapes) for (const drill of drills)
     if (drillAppliesTo(drill, shape)) out.push({ id: cardId(shape, drill), shape, drill });
@@ -66,7 +68,7 @@ export function shapeProgress(shape, srs, drills) {
 
 // One drill across shapes — the transpose of shapeProgress, for "fine on the
 // shapes, poor on the blue note". `acc` is null until attempted at all.
-export function drillProgress(drill, srs, shapes = CARD_SHAPES) {
+export function drillProgress(drill, srs, shapes) {
   const td = todayStr();
   const st = shapes.filter(s => drillAppliesTo(drill, s)).map(s => srs[cardId(s, drill)]);
   const seen = st.reduce((a, c) => a + (c?.seen ?? 0), 0);
@@ -79,7 +81,7 @@ export function drillProgress(drill, srs, shapes = CARD_SHAPES) {
 // Enough attempts to be worth calling weak: one miss on a twice-seen card is
 // noise, and ranking it top would send you to drill the wrong thing.
 export const WEAK_MIN_SEEN = 4, WEAK_ACC = 0.8;
-export function weakestDrills(srs, drills, shapes = CARD_SHAPES, n = 3) {
+export function weakestDrills(srs, drills, shapes, n = 3) {
   return drills
     .map(d => drillProgress(d, srs, shapes))
     .filter(p => p.seen >= WEAK_MIN_SEEN && p.acc < WEAK_ACC)
@@ -89,15 +91,15 @@ export function weakestDrills(srs, drills, shapes = CARD_SHAPES, n = 3) {
 
 // ONE recommendation, with its reason: due work ▸ untried on the focus shape ▸
 // weakest ▸ nothing owing.
-export function nextUp(srs, drills, focus) {
+export function nextUp(srs, drills, focus, shapes) {
   const td = todayStr();
-  const due = buildCards(drills).filter(c => dueOn(srs[c.id], td));
-  if (due.length) return { kind: 'due', count: due.length, shapes: [...new Set(due.map(c => c.shape))].sort((a, b) => CARD_SHAPES.indexOf(a) - CARD_SHAPES.indexOf(b)) };
+  const due = buildCards(drills, shapes).filter(c => dueOn(srs[c.id], td));
+  if (due.length) return { kind: 'due', count: due.length, shapes: [...new Set(due.map(c => c.shape))].sort((a, b) => shapes.indexOf(a) - shapes.indexOf(b)) };
   const fresh = drills.filter(d => drillAppliesTo(d, focus) && !srs[cardId(focus, d)]);
   if (fresh.length) return { kind: 'focus-new', count: fresh.length, shapes: [focus] };
-  const weak = weakestDrills(srs, drills, CARD_SHAPES, 1)[0];
+  const weak = weakestDrills(srs, drills, shapes, 1)[0];
   if (weak) return { kind: 'weak', ...weak };
-  const days = buildCards(drills).map(c => srs[c.id]).filter(Boolean).map(c => dayDiff(td, c.nextDue));
+  const days = buildCards(drills, shapes).map(c => srs[c.id]).filter(Boolean).map(c => dayDiff(td, c.nextDue));
   return { kind: 'clear', soonest: days.length ? Math.min(...days) : null };
 }
 

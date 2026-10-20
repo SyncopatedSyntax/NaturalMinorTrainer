@@ -1,26 +1,36 @@
 import { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import { AppHeader, TabBar, ProgressBackup } from '@fretworks/design';
 import {
-  OPEN_MIDI, pc, midiAt, ckey, unkey, pretty, KEY_NAMES, SCALES, COMPARE_FOR, ivName, spellIn, spellDeg,
-  mode, MODE_INFO, chordOf, chordName, grip, SHAPE_IDS, MODE_IDS, shapeName, getShapes, fullNeck,
+  OPEN_MIDI, pc, midiAt, ckey, unkey, pretty, keyNames, SCALES, COMPARE_FOR, degOfScale, spellIn,
+  mode, MODE_INFO, chordOf, chordName, chordSpell, grip, SHAPES_OF, MODE_IDS, shapeName, getShapes, fullNeck,
   compareIn, compareDegrees, DRILL_FAMILY, BLANK, MODE_DRILLS, SCALE_DRILLS, drillAppliesTo, drillSpec, modeQuestion,
 } from './theory.js';
 import {
   todayStr, updateSRS, isLearned, ri, cardId, buildCards, shapeProgress, drillProgress, weakestDrills,
-  nextUp, forecastStacked, buildQueue, READY_REPS, READY_KEYS, WEAK_MIN_SEEN, WEAK_ACC, CARD_SHAPES,
+  nextUp, forecastStacked, buildQueue, READY_REPS, READY_KEYS, WEAK_MIN_SEEN, WEAK_ACC, cardShapes,
 } from './srs.js';
 import { playMidis, strum } from './audio.js';
 import Fretboard, { DC, TEAL, txtOn } from './Fretboard.jsx';
 import { SCALE_ID, TOOL_KEY, PREFIX, ACCENT as ACC, APP_NAME, ICON_TEXT } from './scale.js';
 
 // ════════════════════════════════════════════════════════════════════════
-//  Minor-scale trainer — shared by Natural Minor Trainer and Harmonic Minor
-//  Trainer. src/scale.js says which one this is; nothing in this file is
-//  specific to either. The five shapes are Zak's charts (charts.js).
+//  Scale trainer — shared by Natural Minor, Harmonic Minor and Major Scale
+//  Trainer. src/scale.js says which one this is; everything that differs is
+//  looked up from it here. The five shapes are Zak's charts (charts.js).
 // ════════════════════════════════════════════════════════════════════════
 
 const S = SCALES[SCALE_ID];
-const OTHER = SCALE_ID === 'natural' ? 'harmonic' : 'natural';
+const NAT = SCALE_ID === 'natural', MAJ = SCALE_ID === 'major';
+const by = o => o[SCALE_ID];   // pick this app's version of a per-scale value
+const OTHER = by({ natural: 'harmonic', harmonic: 'natural', major: null });   // the scale whose charts pair with this one
+const KEYS = keyNames(SCALE_ID);
+const SHAPE_IDS = SHAPES_OF[SCALE_ID], CARD_SHAPES = cardShapes(SCALE_ID);
+const HOME_KEY = MAJ ? 0 : 9;                                          // C major / A minor
+const COMMON_KEYS = MAJ ? [0, 7, 2, 9, 4, 5, 10] : [9, 4, 2, 11, 7, 0, 5];
+const COMMON_TEXT = MAJ ? 'C, G, D, A, E, F and B♭ major' : 'A, E, D, B, G, C and F minor';
+const RELATIVE = MAJ ? { label: 'relative minor', iv: 9 } : { label: 'relative major', iv: 3 };
+// "Only mixolydian" reads wrong; the modes keep their capital.
+const shortOf = id => ['mixo', 'lydian'].includes(id) ? SCALES[id].short : SCALES[id].short.toLowerCase();
 const DRILL_SET = SCALE_DRILLS[SCALE_ID];
 const ON_DARK = '#0b0b16';
 // Card borders as longhands: overriding borderColor on a reused element with
@@ -33,9 +43,10 @@ const ghost = { width: '100%', background: 'transparent', color: '#aaa', border:
 const seg = on => ({ flex: 1, padding: '8px 4px', background: on ? ACC : 'transparent', color: on ? ON_DARK : '#aaa', border: `1px solid ${on ? ACC : '#2a2840'}`, borderRadius: 8, fontSize: 12, fontWeight: 800, cursor: 'pointer', minHeight: 40, touchAction: 'manipulation' });
 const pill = on => ({ padding: '6px 11px', borderRadius: 16, fontSize: 12, fontWeight: 800, cursor: 'pointer', minHeight: 36, border: `1.5px solid ${on ? ACC : '#2a2840'}`, background: on ? ACC : 'transparent', color: on ? ON_DARK : '#aaa', touchAction: 'manipulation', whiteSpace: 'nowrap' });
 const navBtn = { background: 'transparent', border: '1px solid #2a2840', color: '#ccc', borderRadius: 8, padding: '9px 16px', fontSize: 16, fontWeight: 700, cursor: 'pointer', minHeight: 44, minWidth: 48, touchAction: 'manipulation' };
-const keyTitle = root => `${KEY_NAMES[root]} ${S.name.toLowerCase()}`;
+const keyTitle = root => `${KEYS[root]} ${S.title}`;
 const ROOT_MIDI = root => 48 + root;   // where "hear it" starts (C3..B3)
 const noteOfFor = root => m => spellIn(SCALE_ID, root, pc(m - root));
+const MORPHS = new Set(['nat2har', 'tomel', 'tomix', 'tolyd']);
 const sortedPitches = cells => [...new Set(cells.map(c => midiAt(c.s, c.f)))].sort((a, b) => a - b);
 // One octave from the lowest root of the CURRENT labelling (the mode's root).
 const modeRootSpan = cells => {
@@ -150,16 +161,16 @@ function PositionsTab({ root, labelMode, view, setView, shapeId, onShapeId, tn, 
       {diff ? (
         <div style={{ ...card, marginTop: 14, borderColor: ACC + '44' }}>
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, marginBottom: 8 }}>
-            <div style={{ fontSize: 13, fontWeight: 800, lineHeight: 1.4 }}>{keyTitle(root)} <span style={{ color: '#777' }}>vs</span> {KEY_NAMES[root]} {SCALES[cmp].name.toLowerCase()}</div>
+            <div style={{ fontSize: 13, fontWeight: 800, lineHeight: 1.4 }}>{keyTitle(root)} <span style={{ color: '#777' }}>vs</span> {KEYS[root]} {SCALES[cmp].title}</div>
             <PlayBtn small label={'▶ Hear both'} onClick={playBoth} />
           </div>
           <div style={{ fontSize: 12, lineHeight: 2, color: '#ccc' }}>
-            <Row label="Both have">{diff.shared.map(i => <Chip key={i} deg={ivName(i)} note={spellIn(SCALE_ID, root, i)} />)}</Row>
-            <Row label={`Only ${S.short.toLowerCase()}`}>{diff.only.length ? diff.only.map(i => <Chip key={i} deg={ivName(i)} note={spellIn(SCALE_ID, root, i)} ringed />) : <span style={{ color: '#777' }}>nothing</span>}</Row>
-            <Row label={`Only ${SCALES[cmp].short.toLowerCase()}`}>{diff.extra.length ? diff.extra.map(i => <Chip key={i} deg={ivName(i)} note={spellIn(cmp, root, i)} dashed />) : <span style={{ color: '#777' }}>nothing</span>}</Row>
+            <Row label="Both have">{diff.shared.map(i => <Chip key={i} deg={degOfScale(SCALE_ID, i)} note={spellIn(SCALE_ID, root, i)} />)}</Row>
+            <Row label={`Only ${shortOf(SCALE_ID)}`}>{diff.only.length ? diff.only.map(i => <Chip key={i} deg={degOfScale(SCALE_ID, i)} note={spellIn(SCALE_ID, root, i)} ringed />) : <span style={{ color: '#777' }}>nothing</span>}</Row>
+            <Row label={`Only ${shortOf(cmp)}`}>{diff.extra.length ? diff.extra.map(i => <Chip key={i} deg={degOfScale(cmp, i)} note={spellIn(cmp, root, i, SCALE_ID)} dashed />) : <span style={{ color: '#777' }}>nothing</span>}</Row>
           </div>
           <div style={{ fontSize: 11, color: '#888', lineHeight: 1.6, marginTop: 6 }}>
-            On the neck: ringed = only in {S.name.toLowerCase()}; dashed = only in {SCALES[cmp].name.toLowerCase()}{neck ? '' : cmp === OTHER && view === 'caged' ? `, where the ${SCALES[cmp].short.toLowerCase()} version of this shape puts ${cmp === 'harmonic' ? 'its 7s' : 'them'}` : ', at every fret this shape covers'}.
+            On the neck: ringed = only in {keyTitle(root)}; dashed = only in {KEYS[root]} {SCALES[cmp].title}{neck ? '' : cmp === OTHER && view === 'caged' ? `, where the ${SCALES[cmp].short.toLowerCase()} version of this shape puts ${cmp === 'harmonic' ? 'its 7s' : 'them'}` : ', at every fret this shape covers'}.
           </div>
         </div>
       ) : (
@@ -228,7 +239,7 @@ function ScaleMapTab({ root, labelMode, onSee }) {
       {[0, 1, 2, 3, 4, 5, 6].map(k => {
         const c = chordOf(SCALE_ID, k), info = MODE_INFO[SCALE_ID][k], isO = open === k;
         const g = grip(SCALE_ID, root, k), fs = g.map(x => x.f);
-        const croot = pc(root + c.rootIv);
+        const croot = pc(root + c.rootIv), names = chordSpell(SCALE_ID, root, k);
         const cells = g.map(x => ({ s: x.s, f: x.f, deg: CHORD_DEG[x.iv] }));
         return (
           <div key={k} style={{ ...card, padding: 0, borderColor: isO ? ACC + '66' : '#2a2840', overflow: 'hidden' }}>
@@ -243,7 +254,7 @@ function ScaleMapTab({ root, labelMode, onSee }) {
             {isO && (
               <div style={{ padding: '0 10px 12px' }}>
                 <div style={{ ...frame, padding: '6px 4px', marginBottom: 8 }}>
-                  <Fretboard cells={cells} labelMode={labelMode} noteOf={m => spellDeg(croot, pc(m - croot), { 0: 1, 3: 3, 4: 3, 6: 5, 7: 5, 8: 5, 9: 7, 10: 7, 11: 7 }[pc(m - croot)])}
+                  <Fretboard cells={cells} labelMode={labelMode} noteOf={m => names[pc(m - croot)]}
                     win={{ lo: Math.max(0, Math.min(...fs) - 1), hi: Math.max(...fs) + 1 }} rowH={26} accent={ACC} />
                 </div>
                 <div style={{ fontSize: 11.5, color: '#999', lineHeight: 1.6, marginBottom: 9, padding: '0 3px' }}>
@@ -273,12 +284,15 @@ const DRILL_META = {
   build: { label: 'Build it', short: 'Build', ask: () => 'Empty neck. Place the whole shape.' },
   spot7: { label: 'Spot the 7', short: 'Spot 7', ask: () => 'Every dot is grey. Tap every 7 — the leading tone, one fret under a root.' },
   spot67: { label: 'Spot ♭6 and ♭7', short: '♭6 ♭7', ask: () => 'Every dot is grey. Tap every ♭6 and ♭7 — the two notes harmonic and melodic minor raise.' },
+  spot47: { label: 'Spot the 4 and 7', short: '4 & 7', ask: () => 'Every dot is grey. Tap every 4 and 7 — the two notes the major pentatonic leaves out.' },
   nat2har: { label: SCALE_ID === 'natural' ? 'Into harmonic minor' : 'Natural → harmonic', short: '→ Harmonic', ask: () => 'This is the natural minor shape. Make it harmonic minor: cross out every ♭7, and put a 7 one fret below each root.' },
   tomel: { label: 'Into melodic minor', short: '→ Melodic', ask: () => SCALE_ID === 'natural' ? 'Turn it into melodic minor: cross out the ♭6s and ♭7s, add the 6s and 7s in these frets.' : 'Turn it into melodic minor: cross out the ♭6s, add the 6s in these frets.' },
+  tomix: { label: 'Into Mixolydian', short: '→ Mixo', ask: () => 'Turn it into Mixolydian: cross out every 7, add the ♭7s in these frets.' },
+  tolyd: { label: 'Into Lydian', short: '→ Lydian', ask: () => 'Turn it into Lydian: cross out every 4, add the ♯4s in these frets.' },
   mwhich: { label: 'Which mode?', short: 'Which mode', ask: () => 'Which mode fits this chord?' },
   mchord: { label: 'Which chord?', short: 'Which chord', ask: () => 'Which chord of the key does this mode go over?' },
 };
-const FAMILY_NAME = { shape: 'The shape', sig: SCALE_ID === 'natural' ? 'The changing notes' : 'The raised 7th', mode: 'Modes' };
+const FAMILY_NAME = { shape: 'The shape', sig: by({ natural: 'The changing notes', harmonic: 'The raised 7th', major: 'The 4 and the 7' }), mode: 'Modes' };
 const FC = { shape: ACC, mode: '#c7cbff' };
 const cardName = id => id[0] === 'M' ? `${Number(id.slice(1))}. ${MODE_INFO[SCALE_ID][Number(id.slice(1)) - 1].short}` : shapeName(id);
 const nextShape = id => SHAPE_IDS[SHAPE_IDS.indexOf(id) + 1] || null;
@@ -294,15 +308,15 @@ function PracticeTab({ root, labelMode, settings, srs, onGrade, focusId, onFocus
   const [picked, setPicked] = useState(new Set());
   const [tally, setTally] = useState({ ok: 0, miss: 0 });
 
-  const pickKey = () => keyMode === 'fixed' ? root : keyMode === 'common' ? [9, 4, 2, 11, 7, 0, 5][ri(7)] : ri(12);
+  const pickKey = () => keyMode === 'fixed' ? root : keyMode === 'common' ? COMMON_KEYS[ri(7)] : ri(12);
   const prog = useMemo(() => shapeProgress(focusId, srs, drills), [focusId, srs, drills]);
   const ladder = useMemo(() => CARD_SHAPES.map(id => ({ id, ...shapeProgress(id, srs, drills) })), [srs, drills]);
   const focusShape = useMemo(() => getShapes(SCALE_ID, root).find(s => s.id === focusId), [root, focusId]);
-  const plan = useMemo(() => nextUp(srs, drills, focusId), [srs, drills, focusId]);
-  const weak = useMemo(() => weakestDrills(srs, drills), [srs, drills]);
+  const plan = useMemo(() => nextUp(srs, drills, focusId, CARD_SHAPES), [srs, drills, focusId]);
+  const weak = useMemo(() => weakestDrills(srs, drills, CARD_SHAPES), [srs, drills]);
   const focusWeak = useMemo(() => weakestDrills(srs, drills, [focusId], 1)[0] || null, [srs, drills, focusId]);
-  const anyGraded = useMemo(() => drills.some(d => drillProgress(d, srs).seen >= WEAK_MIN_SEEN), [srs, drills]);
-  const fc = useMemo(() => forecastStacked(buildCards(drills), srs), [srs, drills]);
+  const anyGraded = useMemo(() => drills.some(d => drillProgress(d, srs, CARD_SHAPES).seen >= WEAK_MIN_SEEN), [srs, drills]);
+  const fc = useMemo(() => forecastStacked(buildCards(drills, CARD_SHAPES), srs), [srs, drills]);
 
   useEffect(() => { onSession?.(!!queue); }, [queue, onSession]);
   useEffect(() => () => onSession?.(false), [onSession]);
@@ -395,9 +409,9 @@ function PracticeTab({ root, labelMode, settings, srs, onGrade, focusId, onFocus
     // Fretboard questions.
     const spec = drillSpec(SCALE_ID, it.drill, it.root, it.shape, { off: it.off, seed: it.seed });
     const { ok } = spec;
-    const morph = it.drill === 'nat2har' || it.drill === 'tomel';
+    const morph = MORPHS.has(it.drill);
     const blank = BLANK.has(it.drill);
-    const ring = ['spot7', 'spot67', 'nat2har', 'tomel'].includes(it.drill);
+    const ring = it.drill.startsWith('spot') || morph;
     const toggle = (s, f) => {
       if (answer) return;
       const k = ckey(s, f);
@@ -520,7 +534,7 @@ function PracticeTab({ root, labelMode, settings, srs, onGrade, focusId, onFocus
         <div style={hd}>Your focus</div>
         <div style={{ display: 'flex', alignItems: 'baseline', gap: 8, flexWrap: 'wrap' }}>
           <div style={{ fontSize: 22, fontWeight: 900, color: '#fff' }}>{fName}</div>
-          <div style={{ fontSize: 11.5, color: '#888' }}>frets {focusShape.lo}–{focusShape.hi} in {KEY_NAMES[root]}</div>
+          <div style={{ fontSize: 11.5, color: '#888' }}>frets {focusShape.lo}–{focusShape.hi} in {KEYS[root]}</div>
         </div>
         <div style={{ margin: '10px 0' }}>
           <Fretboard cells={focusShape.cells} labelMode={labelMode} noteOf={noteOfFor(root)} accent={ACC} win={{ lo: Math.max(0, focusShape.lo - 1), hi: focusShape.hi + 1 }} rowH={24} />
@@ -625,42 +639,63 @@ function PracticeTab({ root, labelMode, settings, srs, onGrade, focusId, onFocus
 // ════════════════════════════════════════════════════════════════════════
 //  GUIDE
 // ════════════════════════════════════════════════════════════════════════
-const NAT = SCALE_ID === 'natural';
 const GUIDE = [
-  { icon: NAT ? '🌙' : '🎻', title: `What ${S.name.toLowerCase()} is`, body: NAT
-    ? `Natural minor — R 2 ♭3 4 5 ♭6 ♭7 — is the minor key itself, also called Aeolian.
+  { icon: by({ natural: '🌙', harmonic: '🎻', major: '☀️' }), title: `What ${by({ natural: 'natural minor', harmonic: 'harmonic minor', major: 'the major scale' })} is`, body: by({
+    natural: `Natural minor — R 2 ♭3 4 5 ♭6 ♭7 — is the minor key itself, also called Aeolian.
 
 It has exactly the notes of its RELATIVE MAJOR, a minor 3rd up: A natural minor and C major are the same seven notes. What changes is which note is home.
 
-Its three "minor" notes against the major scale are the ♭3, ♭6 and ♭7. The ♭6 and ♭7 are the two that the other minors change: harmonic minor raises the 7th, melodic minor raises the 6th and the 7th.`
-    : `Harmonic minor — R 2 ♭3 4 5 ♭6 7 — is natural minor with the 7th raised a half step.
+Its three "minor" notes against the major scale are the ♭3, ♭6 and ♭7. The ♭6 and ♭7 are the two that the other minors change: harmonic minor raises the 7th, melodic minor raises the 6th and the 7th.`,
+    harmonic: `Harmonic minor — R 2 ♭3 4 5 ♭6 7 — is natural minor with the 7th raised a half step.
 
 That raised 7th is the LEADING TONE: it sits a half step under the root and pulls up into it. It is what turns the minor key's v chord into a V7 — so a minor ii–V–i can resolve as strongly as a major one.
 
-Between the ♭6 and the 7 is a gap of three half steps (an augmented 2nd). That gap is the "exotic", neo-classical, Middle-Eastern sound of the scale.` },
-  { icon: '🖐', title: 'The five shapes', body: `The five positions are CAGED shapes, named after the minor chord shape each one is built around: E shape, D shape, C shape, A shape and G shape. In any key they climb the neck in that order and join end to end.
+Between the ♭6 and the 7 is a gap of three half steps (an augmented 2nd). That gap is the "exotic", neo-classical, Middle-Eastern sound of the scale.`,
+    major: `The major scale — R 2 3 4 5 6 7 — is the one every other scale is measured against: a ♭3, a ♯4 or a ♭7 is named by how it differs from this.
 
-They are transcribed dot for dot from a pair of reference charts — one natural minor, one harmonic minor, drawn as matching sets. A shape is the same grip in every key — change key and the whole shape slides, nothing inside it moves. The arrows walk up the neck, so the order you see depends on the key; the name always tells you which grip you are holding.${NAT ? '' : `
+It has two half steps: 3 to 4, and 7 up to the root. Those two upper notes, the 4 and the 7, are the ones that move. Lower the 7 and you have Mixolydian; raise the 4 and you have Lydian; leave both out and you have the major pentatonic.
+
+Its RELATIVE MINOR, a minor 3rd down (on the 6th degree), has exactly the same notes: C major and A minor. What changes is which note is home.`,
+  }) },
+  { icon: '🖐', title: 'The five shapes', body: `${MAJ
+    ? 'The five positions are CAGED shapes, named after the open major chord shape each one contains: G shape, E shape, D shape, C shape and A shape. In any key they climb the neck in that order and join end to end.\n\nThey are the natural minor charts read from the relative major — C major\'s G shape is A minor\'s E shape, dot for dot. Same notes, a different home.'
+    : 'The five positions are CAGED shapes, named after the minor chord shape each one is built around: E shape, D shape, C shape, A shape and G shape. In any key they climb the neck in that order and join end to end.\n\nThey are transcribed dot for dot from a pair of reference charts — one natural minor, one harmonic minor, drawn as matching sets.'} A shape is the same grip in every key — change key and the whole shape slides, nothing inside it moves. The arrows walk up the neck, so the order you see depends on the key; the name always tells you which grip you are holding.${SCALE_ID !== 'harmonic' ? '' : `
 
 How the 7s are placed: every 7 sits ONE FRET BELOW A ROOT on the same string. That is how each ♭7 of the natural minor shape turns into a 7 — and it is the fastest way to find them.`}` },
   { icon: '🎼', title: 'Modes', body: `Start the same seven notes from each of the seven degrees and you get seven modes. The app keeps the KEY fixed: pick a mode and the same shapes stay where they are, relabelled from the new root.
 
-${NAT ? 'Natural minor\'s modes are the seven church modes — Aeolian, Locrian, Ionian, Dorian, Phrygian, Lydian, Mixolydian — counted from the minor.' : 'The most used is the 5th: Phrygian dominant, over the V7(♭9) of a minor key. The 7th, Ultralocrian, fits the diminished vii°7 that often stands in for that V7.'}
+${by({
+    natural: 'Natural minor\'s modes are the seven church modes — Aeolian, Locrian, Ionian, Dorian, Phrygian, Lydian, Mixolydian — counted from the minor.',
+    harmonic: 'The most used is the 5th: Phrygian dominant, over the V7(♭9) of a minor key. The 7th, Ultralocrian, fits the diminished vii°7 that often stands in for that V7.',
+    major: 'These are the seven church modes: Ionian, Dorian, Phrygian, Lydian, Mixolydian, Aeolian, Locrian. Dorian (over ii) and Mixolydian (over V) are the two you will reach for most — with Ionian they cover a whole ii–V–I.',
+  })}
 
 The Modes tab spells each one in the current key and plays it.` },
   { icon: '🗺️', title: 'Scale Map', body: `Stack thirds on each degree and you get the seven chords of the key. Over each chord, the mode that starts on its root fits.
 
-${NAT ? 'In A natural minor: Am7, Bm7♭5, Cmaj7, Dm7, Em7, Fmaj7, G7.' : 'In A harmonic minor: Am(maj7), Bm7♭5, C+maj7, Dm7, E7, Fmaj7, G♯°7. The E7 is the point — it has the G♯, the raised 7th.'}
+${by({
+    natural: 'In A natural minor: Am7, Bm7♭5, Cmaj7, Dm7, Em7, Fmaj7, G7.',
+    harmonic: 'In A harmonic minor: Am(maj7), Bm7♭5, C+maj7, Dm7, E7, Fmaj7, G♯°7. The E7 is the point — it has the G♯, the raised 7th.',
+    major: 'In C major: Cmaj7, Dm7, Em7, Fmaj7, G7, Am7, Bm7♭5. G7 is the only dominant chord, and Dm7–G7–Cmaj7 is the ii–V–I that jazz is built on.',
+  })}
 
 Tap a chord for a grip: root on the A string, then the 5th, 7th and 3rd on D, G and B (the drop-2 voicing), always within four frets.` },
-  { icon: '⚖️', title: 'Comparing scales', body: `"Compare with" lays another scale with the same root over the shape: ${COMPARE_FOR[SCALE_ID].map(id => SCALES[id].name.toLowerCase()).join(', ')}.
+  { icon: '⚖️', title: 'Comparing scales', body: `"Compare with" lays another scale with the same root over the shape: ${COMPARE_FOR[SCALE_ID].map(id => SCALES[id].title).join(', ')}.
 
-A normal dot is in both. A ringed dot is only in ${S.name.toLowerCase()}. A dashed circle is only in the other scale, shown at every fret the shape covers — except ${NAT ? 'harmonic' : 'natural'} minor, which shows the ${NAT ? 'harmonic' : 'natural'} chart of the same shape. ${NAT ? 'Its 7s sit one fret below each root, so one can land just outside the natural shape.' : 'Its ♭7s fall exactly where the harmonic charts grey them out.'}` },
+A normal dot is in both. A ringed dot is only in ${S.name.toLowerCase()}. A dashed circle is only in the other scale, shown at every fret the shape covers${by({
+    natural: ' — except harmonic minor, which shows the harmonic chart of the same shape. Its 7s sit one fret below each root, so one can land just outside the natural shape.',
+    harmonic: ' — except natural minor, which shows the natural chart of the same shape. Its ♭7s fall exactly where the harmonic charts grey them out.',
+    major: '. Against Mixolydian the only change is the 7; against Lydian, only the 4. Against the major pentatonic nothing is dashed — the 4s and 7s are ringed, because the pentatonic leaves them out.',
+  })}` },
   { icon: '✋', title: 'The drills', body: `Every fretboard question is answered by tapping ALL the right notes, then Check — graded exactly. The counter shows how many there are to find, and every question is in its own key.
 
 THE SHAPE: Every root · Fill the gaps · Root to root (empty neck) · Build it (empty neck).
 
-${NAT ? 'THE CHANGING NOTES: Spot ♭6 and ♭7 · Into harmonic minor (cross out the ♭7s, put a 7 one fret below each root) · Into melodic minor (off by default).' : 'THE RAISED 7TH: Spot the 7 · Natural → harmonic (the natural minor shape is drawn: cross out every ♭7, put a 7 one fret below each root) · Into melodic minor (cross out the ♭6s, add the 6s).'}
+${by({
+    natural: 'THE CHANGING NOTES: Spot ♭6 and ♭7 · Into harmonic minor (cross out the ♭7s, put a 7 one fret below each root) · Into melodic minor (off by default).',
+    harmonic: 'THE RAISED 7TH: Spot the 7 · Natural → harmonic (the natural minor shape is drawn: cross out every ♭7, put a 7 one fret below each root) · Into melodic minor (cross out the ♭6s, add the 6s).',
+    major: 'THE 4 AND THE 7: Spot the 4 and 7 · Into Mixolydian (cross out the 7s, add the ♭7s) · Into Lydian (cross out the 4s, add the ♯4s).',
+  })}
 
 MODES: Which mode? (a chord is named) · Which chord? (a mode is named) — four choices each.
 
@@ -670,7 +705,7 @@ Turn any of them on or off in Settings.` },
 A shape is SOLID when every drill is at three correct answers and you have placed it correctly in six different keys on an empty neck. A mode card only needs the answers. Cards keep coming back on a schedule — that is what makes them stay.
 
 Nothing is locked: the ▶ on any row practises it without moving your focus.` },
-  { icon: '⚙️', title: 'Settings and your progress', body: `Drills on or off, questions per session (8, 12 or 20), and the key for each question: all twelve, the common minor keys (A E D B G C F), or the key you are browsing.
+  { icon: '⚙️', title: 'Settings and your progress', body: `Drills on or off, questions per session (8, 12 or 20), and the key for each question: all twelve, the common ones (${COMMON_TEXT}), or the key you are browsing.
 
 Progress is stored on this device and, if you are signed in to Fretworks, synced to your other devices. Reset practice progress asks twice.` },
 ];
@@ -741,7 +776,7 @@ function SettingsTab({ settings, onChange, onResetProgress }) {
         <div style={{ display: 'flex', gap: 6 }}>
           {[['random', 'All 12'], ['common', 'Common'], ['fixed', 'Current key']].map(([v, l]) => <button key={v} onClick={() => set({ keyMode: v })} style={seg((settings.keyMode || 'random') === v)}>{l}</button>)}
         </div>
-        <div style={{ fontSize: 10.5, color: '#666', marginTop: 8, lineHeight: 1.6 }}>A new key every question is the point — a shape you only know in one place is a picture, not a shape. "Common" is A, E, D, B, G, C and F minor.</div>
+        <div style={{ fontSize: 10.5, color: '#666', marginTop: 8, lineHeight: 1.6 }}>A new key every question is the point — a shape you only know in one place is a picture, not a shape. "Common" is {COMMON_TEXT}.</div>
       </div>
       <div style={card}>
         <div style={hd}>Progress</div>
@@ -796,7 +831,7 @@ const jstore = {
 const okShape = id => SHAPE_IDS.includes(id);
 
 export default function App() {
-  const [root, setRoot] = useState(() => { const n = Number(jstore.get('root', 9)); return Number.isInteger(n) && n >= 0 && n < 12 ? n : 9; });
+  const [root, setRoot] = useState(() => { const n = Number(jstore.get('root', HOME_KEY)); return Number.isInteger(n) && n >= 0 && n < 12 ? n : HOME_KEY; });
   const [labelMode, setLabelMode] = useState(() => jstore.get('label', 'degrees') === 'notes' ? 'notes' : 'degrees');
   const [settings, setSettings] = useState(() => {
     const s = { sessionN: 12, keyMode: 'random', ...(jstore.get('settings', {}) || {}) };
@@ -806,10 +841,10 @@ export default function App() {
   });
   const [pos, setPos] = useState(() => {
     const p = jstore.get('view', {}) || {};
-    return { view: ['caged', 'tnps', 'neck'].includes(p.view) ? p.view : 'caged', shape: okShape(p.shape) ? p.shape : 'E', tn: p.tn >= 1 && p.tn <= 7 ? p.tn : 1 };
+    return { view: ['caged', 'tnps', 'neck'].includes(p.view) ? p.view : 'caged', shape: okShape(p.shape) ? p.shape : SHAPE_IDS[0], tn: p.tn >= 1 && p.tn <= 7 ? p.tn : 1 };
   });
   const [modeK, setModeK] = useState(() => { const k = Number(jstore.get('mode', 0)); return k >= 0 && k < 7 ? k : 0; });
-  const [focus, setFocus] = useState(() => { const f = jstore.get('focus', null); return f && okShape(f.shape) ? f : { shape: 'E', since: null }; });
+  const [focus, setFocus] = useState(() => { const f = jstore.get('focus', null); return f && okShape(f.shape) ? f : { shape: SHAPE_IDS[0], since: null }; });
   const [srs, setSrs] = useState(() => jstore.get('srs', {}) || {});
   const [tab, setTab] = useState('positions');
   const [drilling, setDrilling] = useState(false);
@@ -829,7 +864,7 @@ export default function App() {
       return next;
     });
   }, []);
-  const resetProgress = useCallback(() => { setSrs({}); jstore.set('srs', {}); const f = { shape: 'E', since: null }; setFocus(f); jstore.set('focus', f); }, []);
+  const resetProgress = useCallback(() => { setSrs({}); jstore.set('srs', {}); const f = { shape: SHAPE_IDS[0], since: null }; setFocus(f); jstore.set('focus', f); }, []);
   const moveFocus = useCallback(id => { const f = { shape: id, since: todayStr() }; setFocus(f); jstore.set('focus', f); setPos(p => ({ ...p, view: 'caged', shape: id })); }, []);
   const go = id => { setTab(id); if (scrollRef.current) scrollRef.current.scrollTop = 0; };
   const seeMode = k => { setModeK(k); setPos(p => ({ ...p, view: p.view === 'neck' ? 'caged' : p.view })); go('positions'); };
@@ -843,7 +878,7 @@ export default function App() {
       const x = c.getContext('2d'), u = size / 512;
       x.fillStyle = '#0f0e17'; x.beginPath();
       const rr = 96 * u; x.moveTo(rr, 0); x.arcTo(size, 0, size, size, rr); x.arcTo(size, size, 0, size, rr); x.arcTo(0, size, 0, 0, rr); x.arcTo(0, 0, size, 0, rr); x.fill();
-      ['#ff4757', '#b2d9ff', '#ff9f43', '#74b9ff', '#778ca3', '#9b2335', SCALE_ID === 'natural' ? '#fdcb6e' : '#ff6b6b'].forEach((col, i) => { x.beginPath(); x.arc((86 + i * 57) * u, 300 * u, 24 * u, 0, 7); x.fillStyle = col; x.fill(); });
+      mode(SCALE_ID, 0).labels.map(d => DC[d]).forEach((col, i) => { x.beginPath(); x.arc((86 + i * 57) * u, 300 * u, 24 * u, 0, 7); x.fillStyle = col; x.fill(); });
       x.fillStyle = ACC; x.font = `bold ${84 * u}px sans-serif`; x.textAlign = 'center'; x.fillText(ICON_TEXT, size / 2, 190 * u);
       return c.toDataURL('image/png');
     };
@@ -882,10 +917,10 @@ export default function App() {
         <div style={{ padding: '8px 10px', maxWidth: CW, margin: '0 auto' }}>
           <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', gap: 8, marginBottom: 7 }}>
             <div style={{ fontSize: 13, fontWeight: 800, color: '#fff' }}>{keyTitle(root)}</div>
-            <div style={{ fontSize: 10.5, color: '#777' }}>relative major <span style={{ color: '#aaa', fontWeight: 700 }}>{spellIn(SCALE_ID, root, 3)}</span></div>
+            <div style={{ fontSize: 10.5, color: '#777' }}>{RELATIVE.label} <span style={{ color: '#aaa', fontWeight: 700 }}>{spellIn(SCALE_ID, root, RELATIVE.iv)}</span></div>
           </div>
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(12,1fr)', gap: 3 }}>
-            {KEY_NAMES.map((n, i) => <button key={i} onClick={() => setRoot(i)}
+            {KEYS.map((n, i) => <button key={i} onClick={() => setRoot(i)}
               style={{ padding: '7px 0', borderRadius: 6, fontSize: 10.5, fontWeight: 800, cursor: 'pointer', minHeight: 34, border: `1px solid ${root === i ? ACC : '#2a2840'}`, background: root === i ? ACC : 'transparent', color: root === i ? ON_DARK : '#999', touchAction: 'manipulation' }}>{n}</button>)}
           </div>
         </div>

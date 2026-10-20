@@ -9,6 +9,7 @@ differs from harmonic and melodic minor. Spaced-repetition practice with shape,
 signature-note and mode drills.
 
 Shares its code with [Harmonic Minor Trainer](https://github.com/SyncopatedSyntax/HarmonicMinorTrainer)
+and [Major Scale Trainer](https://github.com/SyncopatedSyntax/MajorScaleTrainer)
 — only `src/scale.js` differs.
 
 ```

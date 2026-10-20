@@ -1,10 +1,11 @@
 // ════════════════════════════════════════════════════════════════════════
-//  Minor-scale theory, shared by Natural Minor Trainer and Harmonic Minor
-//  Trainer (this file is identical in both repos; src/scale.js picks which
-//  scale the app is about). Pure: no React, no DOM.
+//  Scale theory, shared by Natural Minor, Harmonic Minor and Major Scale
+//  Trainer (this file is identical in all three repos; src/scale.js picks
+//  which scale the app is about). Pure: no React, no DOM.
 //
 //  The five CAGED shapes come from Zak's charts (charts.js) — ground truth,
-//  transposed but never regenerated. Everything else (3-notes-per-string,
+//  transposed but never regenerated. The major shapes are his natural minor
+//  charts read from the relative major. Everything else (3-notes-per-string,
 //  full neck, modes, chords, grips, drills) is generated from the formulas,
 //  and scripts/verify.mjs re-derives all of it independently.
 // ════════════════════════════════════════════════════════════════════════
@@ -20,18 +21,24 @@ const keysOf = cs => new Set(cs.map(c => ckey(c.s, c.f)));
 export const pretty = d => String(d).replace(/bb/g, '𝄫').replace(/b/g, '♭').replace(/#/g, '♯');
 
 // ── The scales ───────────────────────────────────────────────────────────
-// The two this app is about, plus the ones it is compared with. Always the
-// PARALLEL scale: same root.
+// The three the apps are about, plus the ones they are compared with. Always
+// the PARALLEL scale: same root. `family` decides how keys are named;
+// `title` is how a key reads ("A natural minor", "C major"). Five-note scales
+// carry their own degree names.
 export const SCALES = {
-  natural:  { id: 'natural',  name: 'Natural minor',  short: 'Natural',   iv: [0, 2, 3, 5, 7, 8, 10] },
-  harmonic: { id: 'harmonic', name: 'Harmonic minor', short: 'Harmonic',  iv: [0, 2, 3, 5, 7, 8, 11] },
-  melodic:  { id: 'melodic',  name: 'Melodic minor',  short: 'Melodic',   iv: [0, 2, 3, 5, 7, 9, 11] },
-  minpent:  { id: 'minpent',  name: 'Minor pentatonic', short: 'Min pent', iv: [0, 3, 5, 7, 10] },
-  major:    { id: 'major',    name: 'Major scale',    short: 'Major',     iv: [0, 2, 4, 5, 7, 9, 11] },
+  natural:  { id: 'natural',  family: 'minor', title: 'natural minor',  name: 'Natural minor',    short: 'Natural',    iv: [0, 2, 3, 5, 7, 8, 10] },
+  harmonic: { id: 'harmonic', family: 'minor', title: 'harmonic minor', name: 'Harmonic minor',   short: 'Harmonic',   iv: [0, 2, 3, 5, 7, 8, 11] },
+  melodic:  { id: 'melodic',  family: 'minor', title: 'melodic minor',  name: 'Melodic minor',    short: 'Melodic',    iv: [0, 2, 3, 5, 7, 9, 11] },
+  minpent:  { id: 'minpent',  family: 'minor', title: 'minor pentatonic', name: 'Minor pentatonic', short: 'Min pent', iv: [0, 3, 5, 7, 10], labels: ['R', 'b3', '4', '5', 'b7'] },
+  major:    { id: 'major',    family: 'major', title: 'major',          name: 'Major scale',      short: 'Major',      iv: [0, 2, 4, 5, 7, 9, 11] },
+  majpent:  { id: 'majpent',  family: 'major', title: 'major pentatonic', name: 'Major pentatonic', short: 'Maj pent', iv: [0, 2, 4, 7, 9], labels: ['R', '2', '3', '5', '6'] },
+  mixo:     { id: 'mixo',     family: 'major', title: 'Mixolydian',     name: 'Mixolydian',       short: 'Mixolydian', iv: [0, 2, 4, 5, 7, 9, 10] },
+  lydian:   { id: 'lydian',   family: 'major', title: 'Lydian',         name: 'Lydian',           short: 'Lydian',     iv: [0, 2, 4, 6, 7, 9, 11] },
 };
 export const COMPARE_FOR = {
   natural: ['harmonic', 'melodic', 'minpent', 'major'],
   harmonic: ['natural', 'melodic', 'minpent', 'major'],
+  major: ['majpent', 'mixo', 'lydian'],
 };
 
 // ── Degree names ─────────────────────────────────────────────────────────
@@ -44,40 +51,46 @@ const ACC = { '-2': 'bb', '-1': 'b', '0': '', '1': '#', '2': '##' };
 export function degreeLabels(ivs) {
   return ivs.map((iv, n) => n === 0 ? 'R' : ACC[String(iv - MAJ[n] > 6 ? iv - MAJ[n] - 12 : iv - MAJ[n])] + (n + 1));
 }
-const LABELS = Object.fromEntries(Object.values(SCALES).map(S => [S.id, S.iv.length === 7 ? degreeLabels(S.iv) : ['R', 'b3', '4', '5', 'b7']]));
+const LABELS = Object.fromEntries(Object.values(SCALES).map(S => [S.id, S.labels || degreeLabels(S.iv)]));
 export const degOfScale = (scaleId, iv) => LABELS[scaleId][SCALES[scaleId].iv.indexOf(pc(iv))];
-// Any interval, named the way a minor-scale player reads it.
-const MINOR_NAMES = ['R', 'b2', '2', 'b3', '3', '4', 'b5', '5', 'b6', '6', 'b7', '7'];
-export const ivName = iv => MINOR_NAMES[pc(iv)];
+const degNumOf = label => label === 'R' ? 1 : Number(label.replace(/\D/g, ''));
 
 // ── Keys and spelling ────────────────────────────────────────────────────
-// Minor keys as usually named (C♯ minor, not D♭ minor).
-export const KEY_NAMES = ['C', 'C♯', 'D', 'E♭', 'E', 'F', 'F♯', 'G', 'G♯', 'A', 'B♭', 'B'];
+// Keys as usually named: minor keys C♯ and G♯ (not D♭ and A♭ minor), major
+// keys D♭ and A♭ (not C♯ and G♯ major). F♯ in both.
+const KEY_NAMES_OF = {
+  minor: ['C', 'C♯', 'D', 'E♭', 'E', 'F', 'F♯', 'G', 'G♯', 'A', 'B♭', 'B'],
+  major: ['C', 'D♭', 'D', 'E♭', 'E', 'F', 'F♯', 'G', 'A♭', 'A', 'B♭', 'B'],
+};
+export const keyNames = scaleId => KEY_NAMES_OF[SCALES[scaleId].family];
 const LETTERS = ['C', 'D', 'E', 'F', 'G', 'A', 'B'], LETTER_PC = [0, 2, 4, 5, 7, 9, 11];
 const PLAIN = ['C', 'C♯', 'D', 'E♭', 'E', 'F', 'F♯', 'G', 'A♭', 'A', 'B♭', 'B'];
-// Spell the note `iv` above `root` as scale degree `degNum` (1..7). Single
-// accidentals are kept even when unusual — G♯ harmonic minor's 7 is F𝄪 in
-// theory, but C♯ harmonic minor's B♯ is simply correct. Only a double
-// accidental falls back to the plain name.
-export function spellDeg(root, iv, degNum) {
+// Spell the note `iv` above a root named `rootName` (pitch class `root`) as
+// degree `degNum` (1..7) counted from that root's letter. Single accidentals
+// are kept even when unusual — G♯ harmonic minor's 7 is F𝄪 in theory, but C♯
+// harmonic minor's B♯ is simply correct. Only a double accidental falls back
+// to the plain name.
+export function spellDeg(rootName, root, iv, degNum) {
   const target = pc(root + iv);
-  const L = (LETTERS.indexOf(KEY_NAMES[root][0]) + degNum - 1) % 7;
+  const L = (LETTERS.indexOf(rootName[0]) + degNum - 1) % 7;
   let acc = pc(target - LETTER_PC[L]); if (acc > 6) acc -= 12;
   if (acc === 0) return LETTERS[L];
   if (acc === 1) return LETTERS[L] + '♯';
   if (acc === -1) return LETTERS[L] + '♭';
   return PLAIN[target];
 }
-// A note of a seven-note scale, spelled from that scale's degree number.
-export function spellIn(scaleId, root, iv) {
+// A note of a scale, spelled from that scale's degree number. The root is
+// named as the APP names its keys (`home`): the minor apps compare G♯ minor
+// with G♯ major, not with A♭ major.
+export function spellIn(scaleId, root, iv, home = scaleId) {
   const i = SCALES[scaleId].iv.indexOf(pc(iv));
-  return i >= 0 && SCALES[scaleId].iv.length === 7 ? spellDeg(root, iv, i + 1) : PLAIN[pc(root + iv)];
+  return i >= 0 ? spellDeg(keyNames(home)[root], root, iv, degNumOf(LABELS[scaleId][i])) : PLAIN[pc(root + iv)];
 }
 
 // ── Modes ────────────────────────────────────────────────────────────────
 // Mode k starts on degree k of the parent scale. Its intervals are the parent
 // rotated; its degree names follow (degreeLabels). The app keeps the KEY as
-// the parent minor key, so choosing a mode relabels the same shapes from a
+// the parent key, so choosing a mode relabels the same shapes from a
 // different root — the shapes stay where they are on the neck.
 export const MODE_INFO = {
   natural: [
@@ -97,6 +110,15 @@ export const MODE_INFO = {
     { name: 'Phrygian dominant', short: 'Phryg. dom.', use: 'Over V7(♭9) resolving to the minor i — the classic minor ii–V–i sound, and flamenco.' },
     { name: 'Lydian ♯2', short: 'Lydian ♯2', use: 'Over ♭VI maj7 with a ♯9 and ♯11: bright and exotic.' },
     { name: 'Ultralocrian', short: 'Ultralocrian', use: 'Over vii°7, the diminished chord that substitutes for V7♭9.' },
+  ],
+  major: [
+    { name: 'Ionian (major)', short: 'Ionian', use: 'The major key itself: over the Imaj7 chord, and anything that sits on the home chord.' },
+    { name: 'Dorian', short: 'Dorian', use: 'Over the ii m7 — the ii of a ii–V–I. Minor, with a bright natural 6.' },
+    { name: 'Phrygian', short: 'Phrygian', use: 'Over the iii m7. The ♭2 makes it the darkest of the minor-sounding modes.' },
+    { name: 'Lydian', short: 'Lydian', use: 'Over IVmaj7. The ♯4 floats where the major scale\'s 4 would clash with the chord\'s 3rd.' },
+    { name: 'Mixolydian', short: 'Mixolydian', use: 'Over V7, the dominant: major with a ♭7. Blues, rock and the V of a ii–V–I.' },
+    { name: 'Aeolian (natural minor)', short: 'Aeolian', use: 'Over the vi m7 — the relative minor. Same notes, centred on the minor chord.' },
+    { name: 'Locrian', short: 'Locrian', use: 'Over viiø7 (m7♭5), the half-diminished chord. The least stable of the seven.' },
   ],
 };
 export function modeIvs(scaleId, k) {
@@ -136,6 +158,13 @@ export const chordName = (scaleId, key, k) => {
   const c = chordOf(scaleId, k);
   return spellIn(scaleId, key, c.rootIv) + c.sym;
 };
+// The chord's four notes, by interval above the chord root: the root named as
+// the key spells it, then letters stacked in thirds (1, 3, 5, 7) from there.
+export function chordSpell(scaleId, key, k) {
+  const c = chordOf(scaleId, k);
+  const rootName = spellIn(scaleId, key, c.rootIv), croot = pc(key + c.rootIv);
+  return Object.fromEntries(c.tones.map((t, j) => [t, spellDeg(rootName, croot, t, [1, 3, 5, 7][j])]));
+}
 // A playable grip for chord k: a drop-2 voicing on the A–D–G–B strings, root
 // in the bass (R, 5th, 7th, 3rd from low to high). Every quality the two
 // scales produce fits under the hand within four frets; verify.mjs checks it.
@@ -153,15 +182,31 @@ export function grip(scaleId, key, k) {
 }
 
 // ── The five CAGED shapes (from the charts) ──────────────────────────────
-// Named by the minor chord shape they are built around, in the order they
-// climb the neck. A shape is the same picture in every key; it sits as low as
-// it can with no fret below 0.
-export const SHAPE_IDS = ['E', 'D', 'C', 'A', 'G'];
+// Named by the chord shape they are built around — minor for the minor
+// scales, major for the major scale — in the order they climb the neck. A
+// shape is the same picture in every key; it sits as low as it can with no
+// fret below 0.
+//
+// The major shapes ARE the natural minor charts, read from the relative major
+// a minor 3rd up: A minor's E shape is C major's G shape, dot for dot. Each
+// is renamed after the open major chord shape it contains (verify.mjs checks
+// that). The minor degree labels inside those charts are not used.
+export const MAJOR_FROM_MINOR = { E: 'G', D: 'E', C: 'D', A: 'C', G: 'A' };
+const CHART_SETS = {
+  natural: CHARTS.natural,
+  harmonic: CHARTS.harmonic,
+  major: Object.fromEntries(Object.entries(CHARTS.natural).map(([id, ch]) => [MAJOR_FROM_MINOR[id], { root: pc(ch.root + 3), cells: ch.cells }])),
+};
+export const SHAPES_OF = {
+  natural: ['E', 'D', 'C', 'A', 'G'],
+  harmonic: ['E', 'D', 'C', 'A', 'G'],
+  major: ['G', 'E', 'D', 'C', 'A'],
+};
 export const shapeName = id => `${id} shape`;
 // How far chart `id` moves to sit in `key`: the interval up from the chart's
 // key, then whole octaves until its lowest fret is 0..11.
 export function chartShift(chartSet, key, id) {
-  const ch = CHARTS[chartSet][id];
+  const ch = CHART_SETS[chartSet][id];
   const mn0 = Math.min(...Object.values(ch.cells).flat().map(([f]) => f));
   let d = pc(key - ch.root);
   while (mn0 + d >= 12) d -= 12;
@@ -169,7 +214,7 @@ export function chartShift(chartSet, key, id) {
   return d;
 }
 export function shapeCells(chartSet, key, id, shift = chartShift(chartSet, key, id)) {
-  return Object.entries(CHARTS[chartSet][id].cells)
+  return Object.entries(CHART_SETS[chartSet][id].cells)
     .flatMap(([s, a]) => a.map(([f]) => ({ s: Number(s), f: f + shift })))
     .sort((a, b) => a.s - b.s || a.f - b.f);
 }
@@ -225,7 +270,7 @@ export function fullNeck(scaleId, key, k = 0, lo = 0, hi = 15) {
 }
 // In neck order. Sorting reorders; it never renames.
 export function getShapes(scaleId, key, kind = 'caged', k = 0) {
-  const list = kind === 'tnps' ? [1, 2, 3, 4, 5, 6, 7].map(n => tnpsShape(scaleId, key, n, k)) : SHAPE_IDS.map(id => cagedShape(scaleId, key, id, k));
+  const list = kind === 'tnps' ? [1, 2, 3, 4, 5, 6, 7].map(n => tnpsShape(scaleId, key, n, k)) : SHAPES_OF[scaleId].map(id => cagedShape(scaleId, key, id, k));
   return list.sort((a, b) => a.lo - b.lo);
 }
 
@@ -257,12 +302,12 @@ export function compareIn(sh, targetId) {
   if (sh.kind === 'caged' && CHART_PAIR[sh.scale] === targetId) {
     const mine = keysOf(sh.cells);
     for (const c of shapeCells(targetId, sh.key, sh.id, sh.shift))
-      if (c.f >= 0 && !mine.has(ckey(c.s, c.f))) extra.push({ ...c, deg: ivName(midiAt(c.s, c.f) - sh.key) });
+      if (c.f >= 0 && !mine.has(ckey(c.s, c.f))) extra.push({ ...c, deg: degOfScale(targetId, midiAt(c.s, c.f) - sh.key) });
     return { shared, only, extra };
   }
   for (let s = 0; s < 6; s++) for (let f = sh.lo; f <= sh.hi; f++) {
     const p = pc(midiAt(s, f));
-    if (tp.has(p) && !bp.has(p)) extra.push({ s, f, deg: ivName(p - sh.key) });
+    if (tp.has(p) && !bp.has(p)) extra.push({ s, f, deg: degOfScale(targetId, p - sh.key) });
   }
   return { shared, only, extra };
 }
@@ -276,16 +321,20 @@ export function compareDegrees(scaleId, targetId) {
 // `M1..M7|drill`. Every fretboard drill is answered by selecting the
 // COMPLETE set and pressing Check (exact grading — Altered Trainer's lesson).
 export const MODE_IDS = ['M1', 'M2', 'M3', 'M4', 'M5', 'M6', 'M7'];
-export const DRILLS = ['root', 'fill', 'octave', 'build', 'spot7', 'spot67', 'nat2har', 'tomel', 'mwhich', 'mchord'];
+export const DRILLS = ['root', 'fill', 'octave', 'build', 'spot7', 'spot67', 'spot47', 'nat2har', 'tomel', 'tomix', 'tolyd', 'mwhich', 'mchord'];
 export const BLANK = new Set(['octave', 'build']);
 export const KEY_DRILLS = new Set(['octave', 'build']);
 export const MODE_DRILLS = new Set(['mwhich', 'mchord']);
-export const DRILL_FAMILY = { root: 'shape', fill: 'shape', octave: 'shape', build: 'shape', spot7: 'sig', spot67: 'sig', nat2har: 'sig', tomel: 'sig', mwhich: 'mode', mchord: 'mode' };
+export const DRILL_FAMILY = { root: 'shape', fill: 'shape', octave: 'shape', build: 'shape', spot7: 'sig', spot67: 'sig', spot47: 'sig', nat2har: 'sig', tomel: 'sig', tomix: 'sig', tolyd: 'sig', mwhich: 'mode', mchord: 'mode' };
 // Which drills each trainer offers, and which are on by default.
 export const SCALE_DRILLS = {
   natural:  { all: ['root', 'fill', 'octave', 'build', 'spot67', 'nat2har', 'tomel', 'mwhich', 'mchord'], on: ['root', 'fill', 'octave', 'build', 'spot67', 'nat2har', 'mwhich', 'mchord'] },
   harmonic: { all: ['root', 'fill', 'octave', 'build', 'spot7', 'nat2har', 'tomel', 'mwhich', 'mchord'], on: ['root', 'fill', 'octave', 'build', 'spot7', 'nat2har', 'tomel', 'mwhich', 'mchord'] },
+  major:    { all: ['root', 'fill', 'octave', 'build', 'spot47', 'tomix', 'tolyd', 'mwhich', 'mchord'], on: ['root', 'fill', 'octave', 'build', 'spot47', 'tomix', 'tolyd', 'mwhich', 'mchord'] },
 };
+// The morph drills that turn the shape into a neighbouring scale by the span
+// rule (cross out what is not in it, add what is, inside the shape's frets).
+const MORPH_TO = { tomel: 'melodic', tomix: 'mixo', tolyd: 'lydian' };
 export const drillAppliesTo = (drill, cardShape) => MODE_DRILLS.has(drill) ? cardShape[0] === 'M' : cardShape[0] !== 'M';
 
 export const WIN_W = 8;
@@ -323,6 +372,7 @@ export function drillSpec(scaleId, drill, key, shapeId, { off = 0, seed = 1 } = 
   }
   if (drill === 'spot7') return { sh, shown: sh.cells, win, ok: keysOf(sh.cells.filter(c => c.pdeg === '7')), remove: new Set() };
   if (drill === 'spot67') return { sh, shown: sh.cells, win, ok: keysOf(sh.cells.filter(c => c.pdeg === 'b6' || c.pdeg === 'b7')), remove: new Set() };
+  if (drill === 'spot47') return { sh, shown: sh.cells, win, ok: keysOf(sh.cells.filter(c => c.pdeg === '4' || c.pdeg === '7')), remove: new Set() };
   if (drill === 'nat2har') {
     const d = pairShift(key, shapeId);
     const nat = finish(labelled(shapeCells('natural', key, shapeId, d), 'natural', key, 0), { id: shapeId, scale: 'natural', key, k: 0 });
@@ -331,10 +381,10 @@ export function drillSpec(scaleId, drill, key, shapeId, { off = 0, seed = 1 } = 
     const remove = new Set([...nk].filter(k => !hk.has(k))), add = [...hk].filter(k => !nk.has(k));
     return { sh: nat, shown: nat.cells, win: { lo: Math.min(nat.lo, har.lo), hi: Math.max(nat.hi, har.hi) }, ok: new Set([...remove, ...add]), remove, target: 'harmonic' };
   }
-  if (drill === 'tomel') {
-    const { only, extra } = compareIn(sh, 'melodic');
+  if (MORPH_TO[drill]) {
+    const { only, extra } = compareIn(sh, MORPH_TO[drill]);
     const remove = keysOf(only);
-    return { sh, shown: sh.cells, win, ok: new Set([...remove, ...keysOf(extra)]), remove, target: 'melodic' };
+    return { sh, shown: sh.cells, win, ok: new Set([...remove, ...keysOf(extra)]), remove, target: MORPH_TO[drill] };
   }
   return null;
 }
