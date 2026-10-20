@@ -1,5 +1,13 @@
 {
   "$schema": "https://openapi.vercel.sh/vercel.json",
+  "redirects": [
+    {
+      "source": "/",
+      "has": [{ "type": "host", "value": "natural-minor-trainer.vercel.app" }],
+      "destination": "https://fretworks.vercel.app/natural-minor",
+      "permanent": true
+    }
+  ],
   "rewrites": [
     { "source": "/natural-minor/(.*)", "destination": "/$1" },
     { "source": "/natural-minor", "destination": "/" }
