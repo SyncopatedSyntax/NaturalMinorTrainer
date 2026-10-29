@@ -45,6 +45,10 @@ const seg = on => ({ flex: 1, padding: '8px 4px', background: on ? ACC : 'transp
 const pill = on => ({ padding: '6px 11px', borderRadius: 16, fontSize: 12, fontWeight: 800, cursor: 'pointer', minHeight: 36, border: `1.5px solid ${on ? ACC : '#2a2840'}`, background: on ? ACC : 'transparent', color: on ? ON_DARK : '#aaa', touchAction: 'manipulation', whiteSpace: 'nowrap' });
 const navBtn = { background: 'transparent', border: '1px solid #2a2840', color: '#ccc', borderRadius: 8, padding: '9px 16px', fontSize: 16, fontWeight: 700, cursor: 'pointer', minHeight: 44, minWidth: 48, touchAction: 'manipulation' };
 const keyTitle = root => `${KEYS[root]} ${S.title}`;
+// A mode on your root ("C Mixolydian") and the scale whose notes it uses
+// ("F major"). Mode 0 is the scale itself, so it reads as the key.
+const modeTitle = (root, k) => k ? `${KEYS[root]} ${mode(SCALE_ID, k).name.replace(/ \(.*\)$/, '')}` : keyTitle(root);
+const parentTitleOf = (root, k) => `${spellMode(SCALE_ID, KEYS[root], root, k, pc(modeParent(SCALE_ID, root, k) - root))} ${S.title}`;
 const ROOT_MIDI = root => 48 + root;   // where "hear it" starts (C3..B3)
 const noteOfFor = root => m => spellIn(SCALE_ID, root, pc(m - root));
 const MORPHS = new Set(['nat2har', 'tomel', 'tomix', 'tolyd']);
@@ -111,7 +115,7 @@ function PositionsTab({ root, labelMode, view, setView, shapeId, onShapeId, tn, 
   const m = mode(SCALE_ID, modeK);
   const modeRoot = KEYS[root];
   const spell = iv => spellMode(SCALE_ID, modeRoot, root, modeK, iv);
-  const parentTitle = `${spell(pc(parent - root))} ${S.title}`;
+  const parentTitle = parentTitleOf(root, modeK);
   // The scale itself is compared with its neighbours; any other mode with the
   // major or natural minor scale on the mode's OWN root, whichever matches
   // its 3rd (`parallelOf`). For modes, `cmp` holds 'parallel' rather than a
@@ -121,7 +125,7 @@ function PositionsTab({ root, labelMode, view, setView, shapeId, onShapeId, tn, 
   const cmpOn = cmpOptions.includes(cmp);
   const target = cmp === 'parallel' ? par : cmp;
   const cmpRoot = root, cmpRootName = modeRoot;
-  const thisName = modeK ? `${modeRoot} ${m.name.replace(/ \(.*\)$/, '')}` : keyTitle(root);
+  const thisName = modeTitle(root, modeK);
   const cmpData = useMemo(() => {
     if (!cmpOn) return null;
     const c = compareIn(shape, target, cmpRoot);
@@ -682,9 +686,9 @@ function PracticeTab({ root, labelMode, settings, srs, onGrade, focusId, onFocus
 // functions the Positions tab uses: C Mixolydian in Major, A Dorian in
 // Natural Minor, A Phrygian dominant in Harmonic Minor.
 const MODE_EX = (() => {
-  const r = HOME_KEY, k = by({ natural: 3, harmonic: 4, major: 4 }), m = mode(SCALE_ID, k);
+  const r = HOME_KEY, k = by({ natural: 3, harmonic: 4, major: 4 });
   const from = SHAPE_IDS[1], to = carryShape(SCALE_ID, r, 'caged', 0, k, from);
-  return { name: `${KEYS[r]} ${m.name.replace(/ \(.*\)$/, '')}`, parent: `${spellMode(SCALE_ID, KEYS[r], r, k, pc(modeParent(SCALE_ID, r, k) - r))} ${S.title}`, key: keyTitle(r), from, to };
+  return { name: modeTitle(r, k), parent: parentTitleOf(r, k), key: keyTitle(r), from, to };
 })();
 const GUIDE = [
   { icon: by({ natural: '🌙', harmonic: '🎻', major: '☀️' }), title: `What ${by({ natural: 'natural minor', harmonic: 'harmonic minor', major: 'the major scale' })} is`, body: by({
@@ -964,6 +968,10 @@ export default function App() {
     { id: 'guide', label: 'Guide', icon: '📖' }, { id: 'settings', label: 'Settings', icon: '⚙️' },
   ];
   const CW = 600;
+  // On Positions the heading names what the neck shows — C Mixolydian, and
+  // whose notes those are. Modes and Scale Map are about the key itself (D
+  // Dorian is the ii of C major there), so they keep "C major".
+  const onMode = tab === 'positions' && modeK > 0;
 
   return (
     <div style={{ background: '#0f0e17', height: '100dvh', width: '100%', boxSizing: 'border-box', display: 'flex', flexDirection: 'column', color: '#fffffe', fontFamily: 'var(--font-body)', WebkitFontSmoothing: 'antialiased' }}>
@@ -977,8 +985,8 @@ export default function App() {
       {!drilling && tab !== 'guide' && tab !== 'settings' && <div style={{ borderBottom: '1px solid #1a1928' }}>
         <div style={{ padding: '8px 10px', maxWidth: CW, margin: '0 auto' }}>
           <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', gap: 8, marginBottom: 7 }}>
-            <div style={{ fontSize: 13, fontWeight: 800, color: '#fff' }}>{keyTitle(root)}</div>
-            <div style={{ fontSize: 10.5, color: '#777' }}>{RELATIVE.label} <span style={{ color: '#aaa', fontWeight: 700 }}>{spellIn(SCALE_ID, root, RELATIVE.iv)}</span></div>
+            <div style={{ fontSize: 13, fontWeight: 800, color: '#fff' }}>{onMode ? modeTitle(root, modeK) : keyTitle(root)}</div>
+            <div style={{ fontSize: 10.5, color: '#777' }}>{onMode ? 'notes of' : RELATIVE.label} <span style={{ color: '#aaa', fontWeight: 700 }}>{onMode ? parentTitleOf(root, modeK) : spellIn(SCALE_ID, root, RELATIVE.iv)}</span></div>
           </div>
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(12,1fr)', gap: 3 }}>
             {KEYS.map((n, i) => <button key={i} onClick={() => setRoot(i)}

@@ -129,6 +129,10 @@ The **Modes tab and Scale Map stay the modes of the key** — D Dorian over the
 ii of C major — because that is their point (which mode fits which chord).
 Their buttons say what they do: "See C Dorian on the neck" sets the mode and
 keeps the root (Zak chose that over moving the key to D).
+On **Positions** the heading above the key buttons follows the mode — "C
+Mixolydian · notes of F major" instead of "C major · relative minor A"; on
+every other tab it stays the key. `modeTitle` / `parentTitleOf` build both
+names, for the heading, the Positions tab and the Guide's example alike.
 Degree names come from `degreeLabels()`, which measures each degree against
 the major scale's degree **of the same number** — so Lydian ♯2 has a ♯2, not
 a ♭3, and Ultralocrian has a 𝄫7.
