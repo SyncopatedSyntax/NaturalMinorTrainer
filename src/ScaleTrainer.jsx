@@ -1,7 +1,7 @@
 import { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import { AppHeader, TabBar, ProgressBackup } from '@fretworks/design';
 import {
-  OPEN_MIDI, pc, midiAt, ckey, unkey, pretty, keyNames, SCALES, COMPARE_FOR, degOfScale, spellIn, spellOn, parallelOf,
+  pc, midiAt, ckey, unkey, pretty, keyNames, SCALES, COMPARE_FOR, degOfScale, spellIn, spellOn, parallelOf,
   modeParent, spellMode, modeShapes, carryShape,
   mode, MODE_INFO, chordOf, chordName, chordSpell, grip, SHAPES_OF, MODE_IDS, shapeName, getShapes, fullNeck,
   compareIn, compareDegrees, DRILL_FAMILY, BLANK, MODE_DRILLS, SCALE_DRILLS, drillAppliesTo, drillSpec, modeQuestion,
@@ -11,8 +11,8 @@ import {
   nextUp, forecastStacked, buildQueue, READY_REPS, READY_KEYS, WEAK_MIN_SEEN, WEAK_ACC, cardShapes,
 } from './srs.js';
 import { playMidis, strum } from './audio.js';
-import Fretboard, { DC, TEAL, txtOn } from './Fretboard.jsx';
-import { SCALE_ID, TOOL_KEY, PREFIX, ACCENT as ACC, APP_NAME, ICON_TEXT } from './scale.js';
+import Fretboard, { DC, txtOn } from './Fretboard.jsx';
+import { SCALE_ID, TOOL_KEY, PREFIX, ACCENT as ACC, ICON_TEXT } from './scale.js';
 
 // ════════════════════════════════════════════════════════════════════════
 //  Scale trainer — shared by Natural Minor, Harmonic Minor and Major Scale

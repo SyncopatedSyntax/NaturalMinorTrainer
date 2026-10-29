@@ -411,7 +411,7 @@ check('fretboard drill answers, re-derived', () => {
     const after = new Set([...nat.filter(k => !n2h.remove.has(k)), ...[...n2h.ok].filter(k => !n2h.remove.has(k))]);
     setEq([...after], har, `${set} ${key} ${id}: nat2har lands on the harmonic chart`);
     for (const k of n2h.remove) { const [s, f] = k.split('_').map(Number); eq(mod(at(s, f) - key), 10, 'only ♭7s are removed'); }
-    for (const k of n2h.ok) { const [s, f] = k.split('_').map(Number); ok(f >= n2h.win.lo && f <= n2h.win.hi, 'answer on screen'); }
+    for (const k of n2h.ok) { const [, f] = k.split('_').map(Number); ok(f >= n2h.win.lo && f <= n2h.win.hi, 'answer on screen'); }
     // tomel: within the shape's frets, the result is exactly melodic minor
     morphed(spec('tomel'), 'melodic');
   }
