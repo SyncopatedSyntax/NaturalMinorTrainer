@@ -12,7 +12,7 @@ import {
 } from './srs.js';
 import { playMidis, strum } from './audio.js';
 import Fretboard, { DC, txtOn } from './Fretboard.jsx';
-import { SCALE_ID, TOOL_KEY, PREFIX, ACCENT as ACC, ICON_TEXT } from './scale.js';
+import { SCALE_ID, TOOL_KEY, PREFIX, ACCENT as ACC } from './scale.js';
 
 // ════════════════════════════════════════════════════════════════════════
 //  Scale trainer — shared by Natural Minor, Harmonic Minor and Major Scale
@@ -938,24 +938,11 @@ export default function App() {
     const style = document.createElement('style');
     style.textContent = `*{-webkit-tap-highlight-color:transparent}body{margin:0}`;
     document.head.appendChild(style);
-    const makeIcon = size => {
-      const c = document.createElement('canvas'); c.width = c.height = size;
-      const x = c.getContext('2d'), u = size / 512;
-      x.fillStyle = '#0f0e17'; x.beginPath();
-      const rr = 96 * u; x.moveTo(rr, 0); x.arcTo(size, 0, size, size, rr); x.arcTo(size, size, 0, size, rr); x.arcTo(0, size, 0, 0, rr); x.arcTo(0, 0, size, 0, rr); x.fill();
-      mode(SCALE_ID, 0).labels.map(d => DC[d]).forEach((col, i) => { x.beginPath(); x.arc((86 + i * 57) * u, 300 * u, 24 * u, 0, 7); x.fillStyle = col; x.fill(); });
-      x.fillStyle = ACC; x.font = `bold ${84 * u}px sans-serif`; x.textAlign = 'center'; x.fillText(ICON_TEXT, size / 2, 190 * u);
-      return c.toDataURL('image/png');
-    };
-    const setLink = (rel, sizes, href) => { let l = document.querySelector(`link[rel="${rel}"]${sizes ? `[sizes="${sizes}"]` : ''}`); if (!l) { l = document.createElement('link'); l.rel = rel; if (sizes) l.sizes = sizes; document.head.appendChild(l); } l.href = href; };
-    setLink('apple-touch-icon', '180x180', makeIcon(180)); setLink('icon', '512x512', makeIcon(512));
     const setMeta = (n, c) => { let m = document.querySelector(`meta[name="${n}"]`); if (!m) { m = document.createElement('meta'); m.name = n; document.head.appendChild(m); } m.content = c; };
     setMeta('theme-color', '#0f0e17');
     setMeta('viewport', 'width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover');
     setMeta('apple-mobile-web-app-capable', 'yes');
     setMeta('apple-mobile-web-app-status-bar-style', 'black-translucent');
-    setMeta('apple-mobile-web-app-title', 'Fretworks');
-    let ml = document.querySelector('link[rel="manifest"]'); if (!ml) { ml = document.createElement('link'); ml.rel = 'manifest'; document.head.appendChild(ml); } ml.href = '/manifest.webmanifest';
     window.scrollTo(0, 0);
     const lock = () => { if (window.scrollY !== 0 || window.scrollX !== 0) window.scrollTo(0, 0); };
     window.addEventListener('scroll', lock, { passive: true });

@@ -1,0 +1,29 @@
+{
+  "id": "/natural-minor/",
+  "name": "Natural Minor Trainer",
+  "short_name": "Nat. Minor",
+  "description": "Learn the natural minor scale in five shapes and its seven modes, see where it differs from harmonic and melodic minor, and drill it with spaced repetition.",
+  "start_url": "/natural-minor/",
+  "scope": "/",
+  "display": "standalone",
+  "background_color": "#0f0e17",
+  "theme_color": "#0f0e17",
+  "icons": [
+    {
+      "src": "/natural-minor/icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png"
+    },
+    {
+      "src": "/natural-minor/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png"
+    },
+    {
+      "src": "/natural-minor/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "maskable"
+    }
+  ]
+}
