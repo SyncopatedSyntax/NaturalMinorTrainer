@@ -472,6 +472,78 @@ check('due-only is exact; a narrow pool is three reps; forecast counts every car
   eq(f.buckets[0].byKind.shape, 1, 'stacked shape / mode');
 });
 
+// ── Modes on your root ───────────────────────────────────────────────────
+// A mode keeps the ROOT the user chose: C Mixolydian is F major's notes and
+// shapes, each placed where it keeps C where one of C major's shapes has it.
+// Every mode of every key of all three scales: the five shapes are all there
+// once, each holds exactly the mode's notes under the mode's degree names,
+// switching to a mode and back returns the shape you started on, and the root
+// stays in the same places — the only moves allowed are a fret of shape-edge
+// difference, or an octave where the twin would need a fret below the nut.
+console.log('\nmodes on your root');
+check('a mode on your root uses its parent\'s five shapes, each once, with the right notes', () => {
+  for (const sc of ['major', 'natural', 'harmonic']) for (let r = 0; r < 12; r++) for (let k = 1; k < 7; k++) {
+    const parent = T.modeParent(sc, r, k), m = T.mode(sc, k);
+    eq(T.pc(parent + m.offset), r, `${sc} mode ${k} on ${r}: parent ${parent} + offset is the root`);
+    const list = T.modeShapes(sc, r, 'caged', k);
+    eq([...list.map(x => x.id)].sort().join(), [...T.SHAPES_OF[sc]].sort().join(), `${sc} mode ${k} on ${r}: the five shapes`);
+    const notes = new Set(T.SCALES[sc].iv.map(i => T.pc(parent + i)));
+    for (const sh of list) for (const c of sh.cells) {
+      const p = T.pc(T.midiAt(c.s, c.f));
+      ok(notes.has(p), `${sc} mode ${k} on ${r}, ${sh.id} shape: fret ${c.f} on string ${c.s} is not in the mode`);
+      eq(c.deg, m.labels[m.ivs.indexOf(T.pc(p - r))], `${sc} mode ${k} on ${r}, ${sh.id} shape: degree name at ${c.s}/${c.f}`);
+      ok(c.f >= 0, `${sc} mode ${k} on ${r}, ${sh.id} shape: fret below the nut`);
+    }
+  }
+});
+check('switching mode keeps the root where it was, and switching back returns the same shape', () => {
+  const places = (sh, r) => new Set(sh.cells.filter(c => T.pc(T.midiAt(c.s, c.f)) === r).map(c => `${c.s}_${c.f}`));
+  const identical = { major: 0, natural: 0, harmonic: 0 }, forced = { major: 0, natural: 0, harmonic: 0 };
+  for (const sc of ['major', 'natural', 'harmonic']) for (let r = 0; r < 12; r++) for (let k = 1; k < 7; k++) {
+    const list = T.modeShapes(sc, r, 'caged', k);
+    for (const h of T.getShapes(sc, r, 'caged', 0)) {
+      const id = T.carryShape(sc, r, 'caged', 0, k, h.id), t = list.find(x => x.id === id);
+      eq(T.carryShape(sc, r, 'caged', k, 0, id), h.id, `${sc} mode ${k} on ${r}: ${h.id} → ${id} → back`);
+      const a = places(h, r), b = places(t, r);
+      const fold = x => new Set([...x].map(v => { const [s, f] = v.split('_'); return `${s}_${T.pc(Number(f))}`; }));
+      const fa = fold(a), fb = fold(b);
+      ok([...fa].some(v => fb.has(v)), `${sc} mode ${k} on ${r}: ${h.id} → ${id} shares no root place`);
+      if ([...a].sort().join() === [...b].sort().join()) identical[sc]++;
+      const d = Math.abs(t.lo - h.lo);
+      if (d > 1) {
+        // Only allowed when the twin cannot sit in h's octave without a fret below 0.
+        ok(t.lo > h.lo && t.lo - 12 < 0, `${sc} mode ${k} on ${r}: ${h.id} frets ${h.lo}-${h.hi} → ${id} frets ${t.lo}-${t.hi} moved for no reason`);
+        forced[sc]++;
+      }
+    }
+  }
+  // Pinned as found (2026-10): a change that loosens the match fails here.
+  ok(identical.major >= 359 && identical.natural >= 350 && identical.harmonic >= 340, `root places identical: ${JSON.stringify(identical)}`);
+  ok(forced.major <= 1 && forced.natural <= 10 && forced.harmonic <= 8, `moved an octave at the nut: ${JSON.stringify(forced)}`);
+  // Zak's example: C major's E shape → C Mixolydian is F major's A shape, C on the low E at fret 8 in both.
+  const e = T.getShapes('major', 0, 'caged', 0).find(x => x.id === 'E'), aId = T.carryShape('major', 0, 'caged', 0, 4, 'E');
+  const a = T.modeShapes('major', 0, 'caged', 4).find(x => x.id === aId);
+  eq(aId, 'A', 'C major E shape → C Mixolydian');
+  ok(places(e, 0).has('0_8') && places(a, 0).has('0_8'), 'C on the low E, 8th fret, in both');
+  ok(a.cells.some(c => T.pc(T.midiAt(c.s, c.f)) === 10) && !a.cells.some(c => T.pc(T.midiAt(c.s, c.f)) === 11), 'C Mixolydian has B♭ and no B');
+});
+check('a mode\'s notes are spelled from your root, one letter each', () => {
+  const LET = n => n[0];
+  for (const sc of ['major', 'natural', 'harmonic']) for (let r = 0; r < 12; r++) for (let k = 0; k < 7; k++) {
+    const name = T.keyNames(sc)[r], m = T.mode(sc, k);
+    const notes = m.ivs.map(i => T.spellMode(sc, name, r, k, i));
+    eq(notes[0], name, `${sc} mode ${k} on ${name}: the root keeps its name`);
+    const PITCH = { C: 0, D: 2, E: 4, F: 5, G: 7, A: 9, B: 11 };
+    notes.forEach((n, i) => eq(T.pc(PITCH[n[0]] + (n.includes('♯') ? 1 : 0) - (n.includes('♭') ? 1 : 0)), T.pc(r + m.ivs[i]), `${sc} mode ${k} on ${name}: ${n} is the right pitch`));
+    const letters = new Set(notes.map(LET));
+    // Seven letters, unless a double accidental fell back to a plain name.
+    if (letters.size !== 7) ok(notes.some((n, i) => n === ['C', 'C♯', 'D', 'E♭', 'E', 'F', 'F♯', 'G', 'A♭', 'A', 'B♭', 'B'][T.pc(r + m.ivs[i])]), `${sc} mode ${k} on ${name}: ${notes.join(' ')}`);
+  }
+  eq(T.mode('major', 2).ivs.map(i => T.spellMode('major', 'C', 0, 2, i)).join(' '), 'C D♭ E♭ F G A♭ B♭', 'C Phrygian');
+  eq(T.mode('major', 4).ivs.map(i => T.spellMode('major', 'D♭', 1, 4, i)).join(' '), 'D♭ E♭ F G♭ A♭ B♭ C♭', 'D♭ Mixolydian');
+  eq(T.mode('natural', 3).ivs.map(i => T.spellMode('natural', 'A', 9, 3, i)).join(' '), 'A B C D E F♯ G', 'A Dorian');
+});
+
 // ── Dates, in every timezone ─────────────────────────────────────────────
 // "Today" is the phone's own calendar day, and the arithmetic on day strings
 // is plain calendar arithmetic, the same wherever the phone is. Both were

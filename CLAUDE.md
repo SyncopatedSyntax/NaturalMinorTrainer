@@ -100,8 +100,35 @@ the harmonic one needs fret −1 for its 7, so `chartShift` puts the two an
 octave apart. Anything that compares the two shapes must use `pairShift`.
 
 ## Modes, chords, grips
-The key stays the **parent** key. Choosing a mode relabels the same
-shapes from the mode's root (`mode()`, `modeDeg()`); the shapes do not move.
+**A mode keeps the root you chose** (Zak, 2026-10 — it used to keep the
+parent key, so C major → Mixolydian showed G Mixolydian). With C chosen,
+Mixolydian is **C Mixolydian**: the notes of its parent, F major
+(`modeParent`), counted from C, in **F major's shapes**, named after them —
+"A shape (F major)" — so the name can change when the mode does (Zak's pick
+over keeping "E shape").
+
+`modeShapes(scale, root, kind, k)` places each parent shape where it keeps the
+root where one of the scale's own shapes has it (`twinShape`: match on the
+root's places with the fret folded into one octave, then the nearest copy),
+and `carryShape` is what a mode switch calls (App `changeMode`), so the shape
+you were looking at becomes the one with the root in the same places, and
+switching back returns it. verify.mjs pins, for every key and mode of all
+three scales: all five shapes once; root places identical (major 359/360,
+natural 350/360, harmonic 340/360 — some harmonic shapes carry an extra
+root); and the only moves allowed are a fret of shape-edge difference or an
+octave where the twin would need a fret below the nut (≤1 / 10 / 8 cases).
+Three-notes-per-string patterns are not always one-to-one; there the
+parent's own list is used and only the choice of pattern follows the root.
+
+Mode notes are spelled from **your root's name by the mode's degree
+numbers** (`spellMode`): C Phrygian's 2 is D♭, D♭ Mixolydian's ♭7 is C♭.
+Spelling from the parent key (the old way) would name D♭ Mixolydian's root C♯
+whenever the app calls the parent F♯.
+
+The **Modes tab and Scale Map stay the modes of the key** — D Dorian over the
+ii of C major — because that is their point (which mode fits which chord).
+Their buttons say what they do: "See C Dorian on the neck" sets the mode and
+keeps the root (Zak chose that over moving the key to D).
 Degree names come from `degreeLabels()`, which measures each degree against
 the major scale's degree **of the same number** — so Lydian ♯2 has a ♯2, not
 a ♭3, and Ultralocrian has a 𝄫7.

@@ -94,9 +94,12 @@ export function spellOn(rootName, root, scaleId, iv) {
 
 // ── Modes ────────────────────────────────────────────────────────────────
 // Mode k starts on degree k of the parent scale. Its intervals are the parent
-// rotated; its degree names follow (degreeLabels). The app keeps the KEY as
-// the parent key, so choosing a mode relabels the same shapes from a
-// different root — the shapes stay where they are on the neck.
+// rotated; its degree names follow (degreeLabels). The app keeps the ROOT:
+// with C chosen, Mixolydian is C Mixolydian — the notes of F major, its
+// parent (`modeParent`), counted from C — shown in F major's shapes, each
+// placed where it keeps C where one of C major's own shapes has it
+// (`modeShapes`). Zak asked for this in place of the first design, which kept
+// the KEY and relabelled it (C major → G Mixolydian).
 // Each mode carries `use` (what it goes over), `char` (the degree, or two,
 // that gives it its sound) and `sound` (one sentence on that). The char
 // degree is the one that separates the mode from its nearest neighbour —
@@ -149,6 +152,16 @@ export function mode(scaleId, k) {
   return { k, scale: scaleId, offset: SCALES[scaleId].iv[k], ivs, labels: degreeLabels(ivs), ...MODE_INFO[scaleId][k] };
 }
 // The degree label of a pitch in mode k of the scale in `key`.
+// The parent key of mode k on `root`: the scale whose k-th degree is `root`.
+export const modeParent = (scaleId, root, k) => pc(root - SCALES[scaleId].iv[k]);
+// A note `iv` above a mode's root, spelled from the root's own name by the
+// MODE's degree numbers — C Phrygian's 2 is D♭ (not C♯), D♭ Mixolydian's ♭7
+// is C♭. Spelling from the parent key instead would name D♭ Mixolydian's
+// root C♯ whenever the app calls the parent F♯.
+export function spellMode(scaleId, rootName, root, k, iv) {
+  const m = mode(scaleId, k), i = m.ivs.indexOf(pc(iv));
+  return i >= 0 ? spellDeg(rootName, root, iv, degNumOf(m.labels[i])) : PLAIN[pc(root + iv)];
+}
 export function modeDeg(scaleId, key, k, midiOrPc) {
   const m = mode(scaleId, k);
   return m.labels[m.ivs.indexOf(pc(midiOrPc - key - m.offset))];
@@ -291,6 +304,52 @@ export function fullNeck(scaleId, key, k = 0, lo = 0, hi = 15) {
 export function getShapes(scaleId, key, kind = 'caged', k = 0) {
   const list = kind === 'tnps' ? [1, 2, 3, 4, 5, 6, 7].map(n => tnpsShape(scaleId, key, n, k)) : SHAPES_OF[scaleId].map(id => cagedShape(scaleId, key, id, k));
   return list.sort((a, b) => a.lo - b.lo);
+}
+
+// ── A mode's shapes, on the root you chose ───────────────────────────────
+// Mode k on `root` uses the shapes of its parent key. Each is matched to the
+// scale's own shape that holds the root in the same places (`twinShape`) and
+// placed in that shape's octave, so switching mode keeps the root where it
+// was on the neck. One position cannot follow at the nut — a shape that
+// would need a fret below 0 stays an octave up.
+//
+// Matching is on the root's places with the fret folded into one octave, then
+// the nearest copy. It is one-to-one for the five shapes in every key and
+// mode of all three scales (verify.mjs checks), so the list is still all
+// five, once each. Three-notes-per-string patterns are not always one-to-one;
+// where they are not, the parent's own list is used and only the choice of
+// pattern follows the root.
+const rootPlaces = (sh, root) => new Set(sh.cells.filter(c => pc(midiAt(c.s, c.f)) === pc(root)).map(c => `${c.s}_${pc(c.f)}`));
+const moveShape = (sh, d) => (d ? { ...sh, cells: sh.cells.map(c => ({ ...c, f: c.f + d })), lo: sh.lo + d, hi: sh.hi + d, shift: (sh.shift ?? 0) + d } : sh);
+export function twinShape(list, cur, root) {
+  const want = rootPlaces(cur, root);
+  let best = null, bestN = -1, bestD = Infinity;
+  for (const c of list) {
+    const have = rootPlaces(c, root);
+    let n = 0; for (const x of want) if (have.has(x)) n++;
+    const d = Math.abs(c.lo - cur.lo);
+    if (n > bestN || (n === bestN && d < bestD)) { best = c; bestN = n; bestD = d; }
+  }
+  return best;
+}
+export function modeShapes(scaleId, root, kind = 'caged', k = 0) {
+  if (!k) return getShapes(scaleId, root, kind, 0);
+  const own = getShapes(scaleId, modeParent(scaleId, root, k), kind, k);
+  const home = getShapes(scaleId, root, kind, 0);
+  const picks = home.map(h => {
+    const t = twinShape(own, h, root);
+    const d = [0, 12, -12].filter(x => t.lo + x >= 0).sort((a, b) => Math.abs(t.lo + a - h.lo) - Math.abs(t.lo + b - h.lo))[0];
+    return moveShape(t, d);
+  });
+  if (new Set(picks.map(p => p.id)).size !== own.length) return own;
+  return picks.sort((a, b) => a.lo - b.lo);
+}
+// Switching mode: the shape of mode `toK` that keeps the root where shape
+// `id` of mode `fromK` had it. Switching back returns the shape you started on.
+export function carryShape(scaleId, root, kind, fromK, toK, id) {
+  const from = modeShapes(scaleId, root, kind, fromK).find(s => s.id === id);
+  if (!from) return id;
+  return twinShape(modeShapes(scaleId, root, kind, toK), from, root).id;
 }
 
 // One octave of a shape: its lowest root up to the next one (parent root).

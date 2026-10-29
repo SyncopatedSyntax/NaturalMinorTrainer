@@ -2,6 +2,7 @@ import { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import { AppHeader, TabBar, ProgressBackup } from '@fretworks/design';
 import {
   OPEN_MIDI, pc, midiAt, ckey, unkey, pretty, keyNames, SCALES, COMPARE_FOR, degOfScale, spellIn, spellOn, parallelOf,
+  modeParent, spellMode, modeShapes, carryShape,
   mode, MODE_INFO, chordOf, chordName, chordSpell, grip, SHAPES_OF, MODE_IDS, shapeName, getShapes, fullNeck,
   compareIn, compareDegrees, DRILL_FAMILY, BLANK, MODE_DRILLS, SCALE_DRILLS, drillAppliesTo, drillSpec, modeQuestion,
 } from './theory.js';
@@ -65,9 +66,11 @@ function Chip({ deg, note, dashed, ringed }) {
   if (dashed) return <span style={{ display: 'inline-block', padding: '2px 8px', borderRadius: 6, fontWeight: 800, fontSize: 11.5, border: '1.5px dashed #b7b5cf', color: '#d4d2e8', margin: '2px 4px 2px 0' }}>{pretty(deg)}{note ? ` · ${note}` : ''}</span>;
   return <span style={{ display: 'inline-block', padding: '2px 8px', borderRadius: 6, fontWeight: 800, fontSize: 11.5, background: col, color: txtOn(col), margin: '2px 4px 2px 0', boxShadow: ringed ? `0 0 0 2px #0f0e17, 0 0 0 3.5px ${ACC}` : 'none' }}>{pretty(deg)}{note ? ` · ${note}` : ''}</span>;
 }
-// The degree that gives mode `m` its sound, named in this key, and why.
-function SoundLine({ m, root, style }) {
-  const noteOf = d => spellIn(SCALE_ID, root, m.offset + m.ivs[m.labels.indexOf(d)]);
+// The degree that gives mode `m` its sound, and why. `spell(iv)` names the
+// note `iv` above the mode's root — on Positions the root is yours; in the
+// Modes tab it is the mode's degree of your key.
+function SoundLine({ m, spell, style }) {
+  const noteOf = d => spell(m.ivs[m.labels.indexOf(d)]);
   return (
     <div style={{ fontSize: 12, color: '#bbb', lineHeight: 1.6, ...style }}>
       <b style={{ color: '#fff' }}>Its sound{m.char.length ? ':' : ''}</b>{' '}
@@ -91,17 +94,24 @@ function ModeChips({ modeK, setModeK }) {
   );
 }
 
-function PositionsTab({ root, labelMode, view, setView, shapeId, onShapeId, tn, setTn, modeK, setModeK, focusId, onFocus, onPractise }) {
+// A mode keeps YOUR root: with C chosen, Mixolydian is C Mixolydian — F
+// major's notes and shapes, each placed where it keeps C where one of C
+// major's shapes has it (theory.js modeShapes). Shapes are named as the
+// parent's ("A shape (F major)"), so the name can change with the mode.
+function PositionsTab({ root, labelMode, view, setView, shapeId, onShapeId, tn, setTn, modeK, onMode, focusId, onFocus, onPractise }) {
   const [cmp, setCmp] = useState('off');
   const neck = view === 'neck';
-  const list = useMemo(() => getShapes(SCALE_ID, root, view === 'tnps' ? 'tnps' : 'caged', modeK), [root, view, modeK]);
+  const list = useMemo(() => modeShapes(SCALE_ID, root, view === 'tnps' ? 'tnps' : 'caged', modeK), [root, view, modeK]);
   const want = view === 'tnps' ? 'T' + tn : shapeId;
   const idx = Math.max(0, list.findIndex(s => s.id === want));
   const cur = list[idx];
   const step = d => { const n = list[(idx + d + list.length) % list.length]; if (view === 'tnps') setTn(Number(n.id.slice(1))); else onShapeId(n.id); };
-  const shape = neck ? fullNeck(SCALE_ID, root, modeK) : cur;
+  const parent = modeParent(SCALE_ID, root, modeK);
+  const shape = neck ? fullNeck(SCALE_ID, parent, modeK) : cur;
   const m = mode(SCALE_ID, modeK);
-  const modeRoot = spellIn(SCALE_ID, root, m.offset);
+  const modeRoot = KEYS[root];
+  const spell = iv => spellMode(SCALE_ID, modeRoot, root, modeK, iv);
+  const parentTitle = `${spell(pc(parent - root))} ${S.title}`;
   // The scale itself is compared with its neighbours; any other mode with the
   // major or natural minor scale on the mode's OWN root, whichever matches
   // its 3rd (`parallelOf`). For modes, `cmp` holds 'parallel' rather than a
@@ -110,7 +120,7 @@ function PositionsTab({ root, labelMode, view, setView, shapeId, onShapeId, tn, 
   const cmpOptions = modeK === 0 ? COMPARE_FOR[SCALE_ID] : par ? ['parallel'] : [];
   const cmpOn = cmpOptions.includes(cmp);
   const target = cmp === 'parallel' ? par : cmp;
-  const cmpRoot = pc(root + m.offset), cmpRootName = modeK ? modeRoot : KEYS[root];
+  const cmpRoot = root, cmpRootName = modeRoot;
   const thisName = modeK ? `${modeRoot} ${m.name.replace(/ \(.*\)$/, '')}` : keyTitle(root);
   const cmpData = useMemo(() => {
     if (!cmpOn) return null;
@@ -118,15 +128,15 @@ function PositionsTab({ root, labelMode, view, setView, shapeId, onShapeId, tn, 
     return { only: new Set(c.only.map(x => ckey(x.s, x.f))), extra: c.extra };
   }, [cmpOn, target, shape, cmpRoot]);
   const diff = cmpOn ? compareDegrees(SCALE_ID, target, modeK) : null;
-  const ownDeg = i => m.labels[m.ivs.indexOf(i)], ownNote = i => spellIn(SCALE_ID, root, m.offset + i);
-  const rm = ROOT_MIDI(root) + m.offset;
+  const ownDeg = i => m.labels[m.ivs.indexOf(i)], ownNote = spell;
+  const rm = ROOT_MIDI(root);
   const playBoth = () => {
     const a = [...m.ivs.map(i => rm + i), rm + 12], b = [...SCALES[target].iv.map(i => rm + i), rm + 12];
     playMidis(a, 0.2); setTimeout(() => playMidis(b, 0.2), a.length * 200 + 650);
   };
   // Keep comparing while stepping through the modes.
   const pickMode = k => {
-    setModeK(k);
+    onMode(k);
     if (k === 0 ? !COMPARE_FOR[SCALE_ID].includes(cmp) : (cmp !== 'parallel' || !parallelOf(SCALE_ID, k))) setCmp('off');
   };
   const span = modeRootSpan(shape.cells);
@@ -137,9 +147,9 @@ function PositionsTab({ root, labelMode, view, setView, shapeId, onShapeId, tn, 
       <ModeChips modeK={modeK} setModeK={pickMode} />
       {modeK > 0 && <>
         <div style={{ fontSize: 12, color: '#bbb', lineHeight: 1.55, margin: '6px 2px 0' }}>
-          <b style={{ color: ACC }}>{modeRoot} {m.name}</b> — the same notes and shapes as {keyTitle(root)}, counted from {modeRoot}. Labels show its degrees; the shapes stay where they are.
+          <b style={{ color: ACC }}>{modeRoot} {m.name}</b> — the notes of {parentTitle}, counted from {modeRoot}, in {parentTitle}'s shapes. Switching mode keeps {modeRoot} where it was on the neck.
         </div>
-        <SoundLine m={m} root={root} style={{ margin: '6px 2px 0' }} />
+        <SoundLine m={m} spell={spell} style={{ margin: '6px 2px 0' }} />
       </>}
 
       <div style={{ display: 'flex', gap: 6, margin: '12px 0 10px' }}>
@@ -157,13 +167,13 @@ function PositionsTab({ root, labelMode, view, setView, shapeId, onShapeId, tn, 
       </>}
 
       <div style={{ display: 'flex', alignItems: 'baseline', gap: 6, flexWrap: 'wrap', marginBottom: 6 }}>
-        <div style={{ fontSize: 14, fontWeight: 900, color: '#fff' }}>{neck ? 'Full neck' : cur.name}</div>
+        <div style={{ fontSize: 14, fontWeight: 900, color: '#fff' }}>{neck ? 'Full neck' : cur.name}{!neck && modeK > 0 && <span style={{ color: '#bbb', fontWeight: 700 }}> ({parentTitle})</span>}</div>
         {view === 'caged' && cur.id === focusId && <span style={{ fontSize: 10, fontWeight: 800, color: ACC, border: `1px solid ${ACC}66`, borderRadius: 12, padding: '2px 7px' }}>FOCUS</span>}
         {!neck && <span style={{ color: '#888', fontWeight: 600, fontSize: 11 }}>frets {cur.lo}–{cur.hi}</span>}
       </div>
 
       <div style={{ ...frame, padding: '8px 4px', overflowX: neck ? 'auto' : 'visible', WebkitOverflowScrolling: 'touch' }}>
-        <Fretboard cells={shape.cells} labelMode={labelMode} noteOf={noteOfFor(root)} compare={cmpData} accent={ACC}
+        <Fretboard cells={shape.cells} labelMode={labelMode} noteOf={mi => spell(pc(mi - root))} compare={cmpData} accent={ACC}
           win={neck ? { lo: 0, hi: 15 } : { lo: Math.max(0, cur.lo - 1), hi: cur.hi + 1 }} scroll={neck} />
       </div>
 
@@ -171,7 +181,7 @@ function PositionsTab({ root, labelMode, view, setView, shapeId, onShapeId, tn, 
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 12, marginTop: 10 }}>
           <button onClick={() => step(-1)} style={navBtn} aria-label="Lower on the neck">{'‹'}</button>
           <div style={{ fontSize: 12, color: '#999', minWidth: 110, textAlign: 'center' }}>
-            {cur.name}<br /><span style={{ fontSize: 10, color: '#666' }}>{idx + 1} of {list.length} up the neck</span>
+            {cur.name}{modeK > 0 && <><br /><span style={{ fontSize: 10.5, color: '#999' }}>{parentTitle}</span></>}<br /><span style={{ fontSize: 10, color: '#666' }}>{idx + 1} of {list.length} up the neck</span>
           </div>
           <button onClick={() => step(1)} style={navBtn} aria-label="Higher on the neck">{'›'}</button>
         </div>
@@ -204,7 +214,7 @@ function PositionsTab({ root, labelMode, view, setView, shapeId, onShapeId, tn, 
         <div style={{ display: 'flex', flexWrap: 'wrap', gap: 10, marginTop: 14, justifyContent: 'center' }}>
           {m.labels.map((d, i) => <span key={d} style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: 10.5, color: '#aaa' }}>
             <span style={{ width: 12, height: 12, borderRadius: '50%', background: DC[d] || '#888', display: 'inline-block', boxShadow: d === 'R' ? '0 0 0 1.5px #fff' : modeK > 0 && m.char.includes(d) ? `0 0 0 2px #0f0e17, 0 0 0 3.5px ${ACC}` : 'none' }} />
-            <span style={modeK > 0 && m.char.includes(d) ? { color: ACC, fontWeight: 800 } : null}>{pretty(d)} {spellIn(SCALE_ID, root, m.offset + m.ivs[i])}</span></span>)}
+            <span style={modeK > 0 && m.char.includes(d) ? { color: ACC, fontWeight: 800 } : null}>{pretty(d)} {spell(m.ivs[i])}</span></span>)}
         </div>
       )}
     </div>
@@ -219,7 +229,7 @@ function ModesTab({ root, onSee }) {
   return (
     <div style={{ padding: '14px 12px' }}>
       <div style={{ fontSize: 12.5, color: '#aaa', lineHeight: 1.65, marginBottom: 12 }}>
-        Seven modes, one set of notes. Each mode starts {keyTitle(root)} on a different degree — tap one to see how it sounds and where it fits.
+        Seven modes, one set of notes. Each mode starts {keyTitle(root)} on a different degree — tap one to see how it sounds and where it fits. On the neck a mode keeps your root instead, so the button shows it on {KEYS[root]}.
       </div>
       {MODE_INFO[SCALE_ID].map((info, k) => {
         const m = mode(SCALE_ID, k), c = chordOf(SCALE_ID, k), isO = open === k;
@@ -240,10 +250,10 @@ function ModesTab({ root, onSee }) {
                   {m.labels.map((d, i) => <Chip key={d} deg={d} note={spellIn(SCALE_ID, root, m.offset + m.ivs[i])} ringed={m.char.includes(d)} />)}
                 </div>
                 <div style={{ fontSize: 12.5, color: '#ccc', lineHeight: 1.6, marginBottom: 8 }}>{info.use}</div>
-                <SoundLine m={m} root={root} style={{ marginBottom: 10 }} />
+                <SoundLine m={m} spell={iv => spellIn(SCALE_ID, root, m.offset + iv)} style={{ marginBottom: 10 }} />
                 <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
                   <PlayBtn label={'▶ Hear it'} onClick={() => playMode(root, k)} />
-                  <button onClick={() => onSee(k)} style={{ background: 'transparent', color: ACC, border: `1px solid ${ACC}66`, borderRadius: 8, padding: '8px 13px', fontSize: 12, fontWeight: 800, cursor: 'pointer', minHeight: 42, touchAction: 'manipulation' }}>See it on the neck</button>
+                  <button onClick={() => onSee(k)} style={{ background: 'transparent', color: ACC, border: `1px solid ${ACC}66`, borderRadius: 8, padding: '8px 13px', fontSize: 12, fontWeight: 800, cursor: 'pointer', minHeight: 42, touchAction: 'manipulation' }}>See {KEYS[root]} {info.short} on the neck</button>
                 </div>
               </div>
             )}
@@ -292,7 +302,7 @@ function ScaleMapTab({ root, labelMode, onSee }) {
                 <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
                   <PlayBtn label={'▶ Chord'} onClick={() => strum(g.map(x => midiAt(x.s, x.f)))} />
                   <PlayBtn label={`▶ ${info.short}`} onClick={() => playMode(root, k)} />
-                  <button onClick={() => onSee(k)} style={{ background: 'transparent', color: ACC, border: `1px solid ${ACC}66`, borderRadius: 8, padding: '8px 12px', fontSize: 12, fontWeight: 800, cursor: 'pointer', minHeight: 42, touchAction: 'manipulation' }}>Mode on the neck</button>
+                  <button onClick={() => onSee(k)} style={{ background: 'transparent', color: ACC, border: `1px solid ${ACC}66`, borderRadius: 8, padding: '8px 12px', fontSize: 12, fontWeight: 800, cursor: 'pointer', minHeight: 42, touchAction: 'manipulation' }}>{KEYS[root]} {info.short} on the neck</button>
                 </div>
               </div>
             )}
@@ -668,6 +678,14 @@ function PracticeTab({ root, labelMode, settings, srs, onGrade, focusId, onFocus
 // ════════════════════════════════════════════════════════════════════════
 //  GUIDE
 // ════════════════════════════════════════════════════════════════════════
+// The Guide's worked example of a mode on your root, worked out by the same
+// functions the Positions tab uses: C Mixolydian in Major, A Dorian in
+// Natural Minor, A Phrygian dominant in Harmonic Minor.
+const MODE_EX = (() => {
+  const r = HOME_KEY, k = by({ natural: 3, harmonic: 4, major: 4 }), m = mode(SCALE_ID, k);
+  const from = SHAPE_IDS[1], to = carryShape(SCALE_ID, r, 'caged', 0, k, from);
+  return { name: `${KEYS[r]} ${m.name.replace(/ \(.*\)$/, '')}`, parent: `${spellMode(SCALE_ID, KEYS[r], r, k, pc(modeParent(SCALE_ID, r, k) - r))} ${S.title}`, key: keyTitle(r), from, to };
+})();
 const GUIDE = [
   { icon: by({ natural: '🌙', harmonic: '🎻', major: '☀️' }), title: `What ${by({ natural: 'natural minor', harmonic: 'harmonic minor', major: 'the major scale' })} is`, body: by({
     natural: `Natural minor — R 2 ♭3 4 5 ♭6 ♭7 — is the minor key itself, also called Aeolian.
@@ -691,7 +709,9 @@ Its RELATIVE MINOR, a minor 3rd down (on the 6th degree), has exactly the same n
     : 'The five positions are CAGED shapes, named after the minor chord shape each one is built around: E shape, D shape, C shape, A shape and G shape. In any key they climb the neck in that order and join end to end.\n\nThey are transcribed dot for dot from a pair of reference charts — one natural minor, one harmonic minor, drawn as matching sets.'} A shape is the same grip in every key — change key and the whole shape slides, nothing inside it moves. The arrows walk up the neck, so the order you see depends on the key; the name always tells you which grip you are holding.${SCALE_ID !== 'harmonic' ? '' : `
 
 How the 7s are placed: every 7 sits ONE FRET BELOW A ROOT on the same string. That is how each ♭7 of the natural minor shape turns into a 7 — and it is the fastest way to find them.`}` },
-  { icon: '🎼', title: 'Modes', body: `Start the same seven notes from each of the seven degrees and you get seven modes. The app keeps the KEY fixed: pick a mode and the same shapes stay where they are, relabelled from the new root.
+  { icon: '🎼', title: 'Modes', body: `Start the same seven notes from each of the seven degrees and you get seven modes. On the Positions tab a mode keeps YOUR ROOT: with ${KEYS[HOME_KEY]} chosen, ${MODE_EX.name} is the notes of ${MODE_EX.parent}, counted from ${KEYS[HOME_KEY]}. It is shown in ${MODE_EX.parent}'s shapes and named after them, and switching mode keeps the root where it was on the neck: ${MODE_EX.key}'s ${MODE_EX.from} shape becomes ${MODE_EX.parent}'s ${MODE_EX.to} shape, the one with ${KEYS[HOME_KEY]} in the same places. (One position at the nut cannot follow — that shape would need a fret below the nut — so it appears an octave up.)
+
+The Modes tab and the Scale Map look at it the other way, as the modes of your key — the mode that fits each chord. Their buttons still show the mode on your root.
 
 Each mode's "Its sound" line names the degree that makes it sound like itself — the one note that separates it from its nearest neighbour (Dorian's natural 6 against Aeolian's ♭6, Lydian's ♯4 against Ionian's 4). That degree is ringed in the colour key under the shape and in the Modes tab.
 
@@ -900,7 +920,15 @@ export default function App() {
   const resetProgress = useCallback(() => { setSrs({}); jstore.set('srs', {}); const f = { shape: SHAPE_IDS[0], since: null }; setFocus(f); jstore.set('focus', f); }, []);
   const moveFocus = useCallback(id => { const f = { shape: id, since: todayStr() }; setFocus(f); jstore.set('focus', f); setPos(p => ({ ...p, view: 'caged', shape: id })); }, []);
   const go = id => { setTab(id); if (scrollRef.current) scrollRef.current.scrollTop = 0; };
-  const seeMode = k => { setModeK(k); setPos(p => ({ ...p, view: p.view === 'neck' ? 'caged' : p.view })); go('positions'); };
+  // Switch mode keeping the root where it is on the neck: the shape and the
+  // 3-per-string pattern both move to their twin in the new mode (carryShape).
+  const changeMode = useCallback(k => {
+    setPos(p => ({ ...p,
+      shape: carryShape(SCALE_ID, root, 'caged', modeK, k, p.shape),
+      tn: Number(carryShape(SCALE_ID, root, 'tnps', modeK, k, 'T' + p.tn).slice(1)) }));
+    setModeK(k);
+  }, [root, modeK]);
+  const seeMode = k => { changeMode(k); setPos(p => ({ ...p, view: p.view === 'neck' ? 'caged' : p.view })); go('positions'); };
 
   useEffect(() => {
     const style = document.createElement('style');
@@ -963,7 +991,7 @@ export default function App() {
         <div style={{ maxWidth: CW, margin: '0 auto', paddingBottom: 'max(80px,env(safe-area-inset-bottom))' }}>
           {tab === 'positions' && <PositionsTab root={root} labelMode={labelMode} view={pos.view} setView={v => setPos(p => ({ ...p, view: v }))}
             shapeId={pos.shape} onShapeId={id => setPos(p => ({ ...p, shape: id }))} tn={pos.tn} setTn={n => setPos(p => ({ ...p, tn: n }))}
-            modeK={modeK} setModeK={setModeK} focusId={focus.shape} onFocus={moveFocus} onPractise={() => go('practice')} />}
+            modeK={modeK} onMode={changeMode} focusId={focus.shape} onFocus={moveFocus} onPractise={() => go('practice')} />}
           {tab === 'practice' && <PracticeTab root={root} labelMode={labelMode} settings={settings} srs={srs} onGrade={grade} focusId={focus.shape} onFocus={moveFocus} onSession={setDrilling} />}
           {tab === 'modes' && <ModesTab root={root} onSee={seeMode} />}
           {tab === 'map' && <ScaleMapTab root={root} labelMode={labelMode} onSee={seeMode} />}
